@@ -16,8 +16,8 @@ export class GLTFAssetLoader {
     this.budget = budgetTracker;
   }
 
-  async load(url) {
-    const gltf = await this._loadAsync(url);
+  async load(url, onProgress = undefined) {
+    const gltf = await this._loadAsync(url, onProgress);
 
     const root = gltf.scene || gltf.scenes?.[0];
     if (!root) return { scene: new THREE.Group(), stats: { tris: 0, meshes: 0 } };
@@ -97,9 +97,9 @@ export class GLTFAssetLoader {
     return Array.isArray(material) ? patched : patched[0];
   }
 
-  _loadAsync(url) {
+  _loadAsync(url, onProgress) {
     return new Promise((resolve, reject) => {
-      this.loader.load(url, resolve, undefined, reject);
+      this.loader.load(url, resolve, onProgress, reject);
     });
   }
 }
@@ -131,9 +131,19 @@ export class SceneLoader {
     const assets = (sceneInstance?.assets) || (definition?.assets) || [];
 
     // Load assets declared by the scene module
+    const gltfEntries = assets.filter(a => a.type === "gltf");
+    let fileIdx = 0;
+    const totalFiles = Math.max(1, gltfEntries.length);
     for (const entry of assets) {
       if (entry.type === "gltf") {
-        const { scene: root } = await this.loader.load(resolveUrl(entry.url));
+        const { scene: root } = await this.loader.load(resolveUrl(entry.url), (ev) => {
+          if (ev && ev.total) {
+            const frac = Math.max(0, Math.min(1, ev.loaded / ev.total));
+            this._reportProgress(fileIdx, frac, totalFiles, entry.url);
+          }
+        });
+        this._reportProgress(fileIdx, 1, totalFiles, entry.url);
+        fileIdx += 1;
         this._applyTransform(root, entry.transform || {});
         this.game.rendererCore.scene.add(root);
         // Naming convention processing (LOD, COL_, etc.)
@@ -207,9 +217,20 @@ export class SceneLoader {
       }
     }
 
-    for (const entry of manifest.assets || []) {
+    const assetsArr = manifest.assets || [];
+    const gltfEntries = assetsArr.filter(a => a.type === "gltf");
+    let fileIdx = 0;
+    const totalFiles = Math.max(1, gltfEntries.length);
+    for (const entry of assetsArr) {
       if (entry.type === "gltf") {
-        const { scene: root } = await this.loader.load(resolveUrl(entry.url));
+        const { scene: root } = await this.loader.load(resolveUrl(entry.url), (ev) => {
+          if (ev && ev.total) {
+            const frac = Math.max(0, Math.min(1, ev.loaded / ev.total));
+            this._reportProgress(fileIdx, frac, totalFiles, entry.url);
+          }
+        });
+        this._reportProgress(fileIdx, 1, totalFiles, entry.url);
+        fileIdx += 1;
         this._applyTransform(root, entry.transform || {});
         this.game.rendererCore.scene.add(root);
         this._processNamingConventions(root);
@@ -315,6 +336,14 @@ export class SceneLoader {
     }
 
     return out;
+  }
+
+  _reportProgress(fileIdx, fileFrac, totalFiles, url) {
+    const frac = Math.max(0, Math.min(1, (fileIdx + fileFrac) / Math.max(1, totalFiles)));
+    if (this.game?.loading) {
+      this.game.loading.setMessage(`Loading ${url} (${Math.round(frac * 100)}%)`);
+      this.game.loading.setProgress(frac);
+    }
   }
 
   _applyTransform(object3D, t) {

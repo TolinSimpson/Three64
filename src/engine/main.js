@@ -7,7 +7,9 @@ import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { loadJSON } from "./io.js";
 // Register built-in components
 import "./default-assets/feature-showcase.js";
+import "./collider.js";
 import { FPSController } from "./fpsController.js";
+import LoadingScreen from "./loadingScreen.js";
 
 let frameIntervalMs = 1000 / 60;
 let lastStepTime = performance.now();
@@ -37,6 +39,7 @@ function createApp() {
     budget,
     physics,
     fps,
+    loading: new LoadingScreen(),
     profiler: Debug.profiler,
     errors: Debug.errors,
     toggles: Debug.toggles,
@@ -112,28 +115,36 @@ async function start() {
     // Fallback: built-in default scene module
     const moduleUrl = new URL("/src/engine/default-assets/default-scene.js", document.baseURI).href;
     try {
+      app.loading.show("Loading scene...");
       const mod = await import(moduleUrl);
       const def = mod.default || mod;
       const baseUrl = moduleUrl.replace(/\/[^\/]*$/, "");
       const loader = new SceneLoader(app);
       await loader.loadFromDefinition(def, baseUrl);
+      app.loading.setProgress(1);
+      app.loading.hide();
       positionPlayerFromMarkers();
     } catch (e) {
       console.error("Failed to load default scene module:", e);
       app.errors.show(["Failed to load default scene"]);
+      app.loading.hide();
     }
   } else {
     const moduleUrl = new URL(`scenes/${entry.module}`, document.baseURI).href;
     try {
+      app.loading.show("Loading scene...");
       const mod = await import(moduleUrl);
       const def = mod.default || mod;
       const baseUrl = moduleUrl.replace(/\/[^\/]*$/, "");
       const loader = new SceneLoader(app);
       await loader.loadFromDefinition(def, baseUrl);
+      app.loading.setProgress(1);
+      app.loading.hide();
       positionPlayerFromMarkers();
     } catch (e) {
       console.error("Failed to load scene module:", e);
       app.errors.show([`Failed to load ${moduleUrl}`]);
+      app.loading.hide();
     }
   }
   animate();
