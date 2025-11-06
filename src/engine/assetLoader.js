@@ -274,6 +274,7 @@ export class SceneLoader {
         } catch (e) {
           console.warn("Component Initialize() threw:", def.type, e);
         }
+        instance.__typeName = def.type;
         obj.__components = obj.__components || [];
         obj.__components.push(instance);
         this.game.componentInstances.push(instance);
