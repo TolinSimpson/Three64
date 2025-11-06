@@ -1,0 +1,15 @@
+{
+  "name": "three64",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "npx http-server -c-1 -p 5173 .",
+    "test": "echo \"No tests yet. Add Jest later.\" && exit 0",
+    "editor": "node src/editor/cli.mjs"
+  },
+  "bin": {},
+  "devDependencies": {}
+}
+
+
