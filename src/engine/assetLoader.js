@@ -136,7 +136,8 @@ export class SceneLoader {
     const totalFiles = Math.max(1, gltfEntries.length);
     for (const entry of assets) {
       if (entry.type === "gltf") {
-        const { scene: root } = await this.loader.load(resolveUrl(entry.url), (ev) => {
+        const absUrl = resolveUrl(entry.url);
+        const { scene: root } = await this.loader.load(absUrl, (ev) => {
           if (ev && ev.total) {
             const frac = Math.max(0, Math.min(1, ev.loaded / ev.total));
             this._reportProgress(fileIdx, frac, totalFiles, entry.url);
@@ -146,6 +147,11 @@ export class SceneLoader {
         fileIdx += 1;
         this._applyTransform(root, entry.transform || {});
         this.game.rendererCore.scene.add(root);
+        try { root.userData = root.userData || {}; root.userData.__sourceUrl = absUrl; } catch {}
+        try {
+          this.game.loadedGLTFs = this.game.loadedGLTFs || [];
+          this.game.loadedGLTFs.push({ url: absUrl, object: root });
+        } catch {}
         // Naming convention processing (LOD, COL_, etc.)
         this._processNamingConventions(root);
         // Instantiate components from userData
@@ -223,7 +229,8 @@ export class SceneLoader {
     const totalFiles = Math.max(1, gltfEntries.length);
     for (const entry of assetsArr) {
       if (entry.type === "gltf") {
-        const { scene: root } = await this.loader.load(resolveUrl(entry.url), (ev) => {
+        const absUrl = resolveUrl(entry.url);
+        const { scene: root } = await this.loader.load(absUrl, (ev) => {
           if (ev && ev.total) {
             const frac = Math.max(0, Math.min(1, ev.loaded / ev.total));
             this._reportProgress(fileIdx, frac, totalFiles, entry.url);
@@ -233,6 +240,11 @@ export class SceneLoader {
         fileIdx += 1;
         this._applyTransform(root, entry.transform || {});
         this.game.rendererCore.scene.add(root);
+        try { root.userData = root.userData || {}; root.userData.__sourceUrl = absUrl; } catch {}
+        try {
+          this.game.loadedGLTFs = this.game.loadedGLTFs || [];
+          this.game.loadedGLTFs.push({ url: absUrl, object: root });
+        } catch {}
         this._processNamingConventions(root);
         // Instantiate components from userData
         this._instantiateFromUserData(root);

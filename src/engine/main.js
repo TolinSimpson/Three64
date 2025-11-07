@@ -1,6 +1,6 @@
 import { RendererCore } from "./renderer.js";
 import { PhysicsWorld } from "./physics.js";
-import { SceneLoader } from "./assetLoader.js";
+import { SceneLoader, GLTFAssetLoader } from "./assetLoader.js";
 import { BudgetTracker, initDebugOverlay, Debug } from "./debug.js";
 import { config, getInternalResolution } from "./engine.js";
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
@@ -108,10 +108,48 @@ async function start() {
       if (c && typeof c.Update === "function") c.Update(dt);
     }
   });
-  const sceneParam = new URLSearchParams(window.location.search).get("scene") || "showcase";
+  const params = new URLSearchParams(window.location.search);
+  const gltfUrlParam = params.get("gltf");
+  const sceneParam = params.get("scene") || "showcase";
   const scenesIndex = await loadJSON("config/scene-manifest.json");
   let entry = (scenesIndex.scenes || []).find(s => s.id === sceneParam) || (scenesIndex.scenes || [])[0];
-  if (!entry || !entry.module) {
+  if (gltfUrlParam) {
+    try {
+      app.loading.show("Loading GLTF...");
+      let loadUrl = gltfUrlParam;
+      if (gltfUrlParam.startsWith('inline:')) {
+        const key = gltfUrlParam.substring('inline:'.length);
+        let b64 = null;
+        try { b64 = sessionStorage.getItem(key); } catch {}
+        if (!b64) {
+          try { b64 = localStorage.getItem(key); } catch {}
+        }
+        if (!b64) {
+          console.warn('inline glb not found, falling back to default scene');
+          loadUrl = null;
+        } else {
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const blob = new Blob([bytes], { type: 'model/gltf-binary' });
+          loadUrl = URL.createObjectURL(blob);
+        }
+      } else {
+        loadUrl = new URL(gltfUrlParam, document.baseURI).toString();
+      }
+      if (loadUrl) {
+        const gltfLoader = new GLTFAssetLoader(app.budget);
+        const { scene: root } = await gltfLoader.load(loadUrl);
+        app.rendererCore.scene.add(root);
+        app.loading.setProgress(1);
+        app.loading.hide();
+        positionPlayerFromMarkers();
+        return;
+      }
+    } catch (e) {
+      console.error("Failed to load gltf param:", e);
+      app.errors.show([`Failed to load ${gltfUrlParam}`]);
+      app.loading.hide();
+    }
+  } else if (!entry || !entry.module) {
     // Fallback: built-in default scene module
     const moduleUrl = new URL("/src/engine/default-assets/default-scene.js", document.baseURI).href;
     try {

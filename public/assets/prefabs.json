@@ -1,0 +1,15 @@
+[
+  {
+    "name": "Tree",
+    "url": "assets/models/tree01.glb",
+    "thumb": "assets/models/tree-thumb.png",
+    "userData": {
+      "components": [
+        { "type": "collider", "params": { "visible": true } }
+      ],
+      "name": "Tree"
+    }
+  }
+]
+
+

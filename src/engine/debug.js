@@ -12,6 +12,7 @@ export const Debug = {
     showHUD: true,
     wireframe: false,
     budgetOverlay: true,
+    collidersLime: false,
   },
   profiler: {
     fpsEl: null,
@@ -132,6 +133,11 @@ function installKeyHandlers(game) {
       Debug.toggles.budgetOverlay = !Debug.toggles.budgetOverlay;
       log(`[budget overlay] ${Debug.toggles.budgetOverlay ? 'on' : 'off'}`);
       e.preventDefault();
+    } else if (e.code === 'F4') {
+      Debug.toggles.collidersLime = !Debug.toggles.collidersLime;
+      applyColliders(game, Debug.toggles.collidersLime);
+      log(`[colliders lime] ${Debug.toggles.collidersLime ? 'on' : 'off'}`);
+      e.preventDefault();
     }
   });
 }
@@ -145,6 +151,24 @@ function toggleOverlay() {
 function setHUDVisible(visible) {
   const el = document.getElementById('hud-overlay');
   if (el) el.style.display = visible ? 'block' : 'none';
+}
+
+function applyColliders(game, enabled) {
+  try {
+    const group = game?.physics?.colliderGroup;
+    if (!group) return;
+    for (let i = 0; i < group.children.length; i++) {
+      const mesh = group.children[i];
+      if (!mesh || !mesh.material) continue;
+      const mat = mesh.material;
+      if (typeof mat.color?.set === 'function') mat.color.set(0x32cd32);
+      mat.wireframe = true;
+      mat.transparent = true;
+      if (enabled) mat.opacity = 0.6;
+      mat.needsUpdate = true;
+      mesh.visible = !!enabled;
+    }
+  } catch {}
 }
 
 function ensureOverlayHTMLInline() {
@@ -189,6 +213,20 @@ function ensureOverlayHTMLInline() {
     row.appendChild(s);
   });
   hud.appendChild(row);
+
+  // Editor button
+  const editorBtn = document.createElement('button');
+  editorBtn.textContent = 'Editor';
+  editorBtn.title = 'Open current GLTF in editor';
+  editorBtn.style.marginLeft = '8px';
+  editorBtn.style.cursor = 'pointer';
+  editorBtn.style.background = '#1f2937';
+  editorBtn.style.color = '#9cf';
+  editorBtn.style.border = '1px solid #334';
+  editorBtn.style.padding = '2px 6px';
+  editorBtn.style.borderRadius = '3px';
+  editorBtn.addEventListener('click', () => openEditorForCurrentGLTF(window.__game));
+  row.appendChild(editorBtn);
 
   const cli = document.createElement('div');
   cli.id = 'debug-cli';
@@ -269,7 +307,7 @@ function handleCommand(line) {
   const [cmd, ...rest] = line.split(/\s+/);
   switch ((cmd || '').toLowerCase()) {
     case 'help':
-      log('commands: help, wire on|off, hud on|off, budget on|off, clear');
+      log('commands: help, wire on|off, hud on|off, budget on|off, colliders on|off, editor, clear');
       break;
     case 'clear':
       if (Debug.cli.logEl) Debug.cli.logEl.innerHTML = '';
@@ -283,6 +321,12 @@ function handleCommand(line) {
     case 'budget':
       setToggle('budgetOverlay', parseOnOff(rest[0]));
       break;
+    case 'colliders':
+      setToggle('collidersLime', parseOnOff(rest[0]));
+      break;
+    case 'editor':
+      openEditorForCurrentGLTF(window.__game);
+      break;
     default:
       log(`unknown: ${cmd}`);
   }
@@ -292,6 +336,7 @@ function setToggle(name, value) {
   if (typeof value === 'boolean') Debug.toggles[name] = value; else Debug.toggles[name] = !Debug.toggles[name];
   if (name === 'showHUD') setHUDVisible(Debug.enabled && Debug.toggles.showHUD);
   if (name === 'wireframe') window.__game?.setWireframe?.(Debug.toggles.wireframe);
+  if (name === 'collidersLime') applyColliders(window.__game, Debug.toggles.collidersLime);
   log(`[${name}] ${Debug.toggles[name] ? 'on' : 'off'}`);
 }
 
@@ -320,4 +365,36 @@ function formatBytes(b) {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+// --- Editor launcher ---
+function openEditorForCurrentGLTF(game) {
+  const url = findFirstGLTFUrl(game);
+  try {
+    const editorUrl = new URL('editor.html', document.baseURI || window.location.href);
+    if (url) editorUrl.searchParams.set('open', url);
+    window.location.assign(editorUrl.toString());
+  } catch (e) {
+    log('failed to open editor');
+  }
+}
+
+function findFirstGLTFUrl(game) {
+  try {
+    if (Array.isArray(game?.loadedGLTFs) && game.loadedGLTFs.length) {
+      return game.loadedGLTFs[game.loadedGLTFs.length - 1].url;
+    }
+  } catch {}
+  try {
+    const scene = game?.rendererCore?.scene;
+    if (!scene) return null;
+    let out = null;
+    scene.traverse((o) => {
+      if (out) return;
+      const u = o?.userData?.__sourceUrl;
+      if (u) out = u;
+    });
+    return out;
+  } catch {}
+  return null;
 }

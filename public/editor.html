@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Three64 GLTF Editor</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="editor.css">
+  </head>
+  <body>
+    <div id="editor-root" class="editor-root">
+      <div class="editor-toolbar">
+        <button id="btn-open" title="Open (Ctrl+O)">Open</button>
+        <button id="btn-save" title="Save (Ctrl+S)">Save</button>
+        <button id="btn-save-as" title="Save As (Ctrl+Shift+S)">Save As</button>
+        <button id="btn-export" title="Export GLB">Export</button>
+        <span class="sep"></span>
+        <button id="btn-translate" title="Translate (W)">Translate</button>
+        <button id="btn-rotate" title="Rotate (E)">Rotate</button>
+        <button id="btn-scale" title="Scale (R)">Scale</button>
+        <span class="sep"></span>
+        <button id="btn-back" title="Open game without saving">Back</button>
+        <span class="file-label" id="file-label">No file</span>
+        <span class="spacer"></span>
+        <span class="hint">W/E/R gizmo • F frame • Drag to orbit</span>
+      </div>
+
+      <div class="editor-layout">
+        <aside class="panel panel-left">
+          <div class="panel-header">Outliner</div>
+          <div id="outliner" class="outliner" tabindex="0"></div>
+        </aside>
+
+        <main class="viewport">
+          <canvas id="editor-canvas"></canvas>
+        </main>
+
+        <aside class="panel panel-right">
+          <div class="panel-header">Inspector</div>
+          <div class="inspector" id="inspector">
+            <div class="field">
+              <label>Name</label>
+              <input id="name" type="text" />
+            </div>
+            <div class="field-group">
+              <label>Position</label>
+              <div class="triple">
+                <input id="pos-x" type="number" step="0.01" placeholder="x" />
+                <input id="pos-y" type="number" step="0.01" placeholder="y" />
+                <input id="pos-z" type="number" step="0.01" placeholder="z" />
+              </div>
+            </div>
+            <div class="field-group">
+              <label>Rotation (deg)</label>
+              <div class="triple">
+                <input id="rot-x" type="number" step="0.1" placeholder="x" />
+                <input id="rot-y" type="number" step="0.1" placeholder="y" />
+                <input id="rot-z" type="number" step="0.1" placeholder="z" />
+              </div>
+            </div>
+            <div class="field-group">
+              <label>Scale</label>
+              <div class="triple">
+                <input id="scl-x" type="number" step="0.01" placeholder="x" />
+                <input id="scl-y" type="number" step="0.01" placeholder="y" />
+                <input id="scl-z" type="number" step="0.01" placeholder="z" />
+              </div>
+            </div>
+            <div class="field-group">
+              <label>User Data (JSON)</label>
+              <textarea id="userdata" rows="10" spellcheck="false"></textarea>
+              <div class="row">
+                <button id="btn-apply-userdata">Apply</button>
+              </div>
+            </div>
+          </div>
+        </aside>
+        <div class="asset-bar" id="asset-bar">
+          <div class="asset-bar-header">Prefabs</div>
+          <div class="asset-list" id="asset-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <input id="file-input" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" style="display:none" />
+
+    <script type="module" src="/src/editor/editor.js"></script>
+  </body>
+  </html>
+
+
