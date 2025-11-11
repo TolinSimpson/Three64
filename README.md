@@ -35,7 +35,7 @@ npm run dev
 ```
 
 - This runs the bundler in watch mode and a static server with live reload.
-- Changes under `src/runtime`, `src/assets/models`, `src/assets/textures`, and `src/blender/component-data` trigger incremental rebuilds and refresh the browser.
+- Changes under `src/runtime`, `src/assets/models`, `src/assets/textures`, and `src/assets/default-component-data` trigger incremental rebuilds and refresh the browser.
 - In development, the entire `src/assets/models` and `src/assets/textures` folders are copied so new/changed files appear immediately. Production builds still tree‑shake assets.
 - Stop with Ctrl+C. For a production-like run, use `npm run build && npm run serve`.
 
@@ -194,4 +194,19 @@ At runtime, each node with matching properties creates an instance and calls `In
   - Whole-model collider if no `COL_` meshes.
   - Default scene loader if scenes index is empty.
 
+
+## Blender Add-on: Three64 Component Data
+
+This repository includes a Blender add-on that reads JSON definitions from `src/assets/default-component-data/` (or any folder you pick) and adds a dropdown to Object Properties (and the Custom Properties panel) to set a component ID on the selected object.
+
+- Location in repo: `src/blender/gltf_userData.py` (install this single file or zip it)
+- How to install:
+  1. In Blender: Edit → Preferences → Add-ons → Install… → select `src/blender/gltf_userData.py` (or a zip containing it) → enable “Three64 Component Data”.
+- Preferences:
+  - “Component Data Directory” points to where your `.json` files live. It can be an absolute folder anywhere on your machine so the add-on does not need to bundle the JSON. Recommended for this repo: point it at `src/assets/default-component-data`. From the included `.blend` (`src/blender/default-scene.blend`) a convenient relative path is `//../assets/default-component-data`.
+- Usage:
+  - Select any object, open Object Properties → “Three64 Component” panel (or open Object Properties → “Custom Properties”).
+  - Pick a value from the dropdown. The selection is mirrored into a true custom property `id` on the object so it can be exported to glTF (with “Include → Custom Properties” enabled).
+  - Click the refresh icon to re-scan the directory after adding/removing JSON files.
+  - If you need to change the external folder, click “Open Add-on Preferences” in the panel, then set “Component Data Directory” to the path of your `default-component-data` folder.
 

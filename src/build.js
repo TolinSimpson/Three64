@@ -64,7 +64,7 @@ async function optimizeGltfIfPossible(buffer, absoluteFrom) {
 async function generateComponentPresets() {
   const projectRoot = path.resolve(__dirname, '..');
   const runtimeDir = path.resolve(projectRoot, 'src/runtime');
-  const outputDir = path.resolve(projectRoot, 'src/blender/component-data');
+  const outputDir = path.resolve(projectRoot, 'src/assets/default-component-data');
   try { fs.mkdirSync(outputDir, { recursive: true }); } catch {}
 
   // Find files that register components
@@ -282,13 +282,6 @@ const config = {
           to: path.resolve(__dirname, '../public/build/assets/config'),
           noErrorOnMissing: true,
         },
-        // Component presets for Blender/tooling and runtime fallback
-        {
-          from: path.resolve(__dirname, '../src/blender/component-data'),
-          to: path.resolve(__dirname, '../public/build/assets/component-data'),
-          noErrorOnMissing: true,
-        },
-        // Ammo.js is bundled into runtime.js; no vendor copy needed
       ],
     }),
   ],
