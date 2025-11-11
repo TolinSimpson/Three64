@@ -22,6 +22,80 @@ _cached_dir_abs: str = ""
 _cached_index: Dict[str, str] = {}
 _cached_param_desc: Dict[str, Dict[str, str]] = {}
 
+def _axis_name_to_index(name: str) -> int:
+	try:
+		l = name.lower()
+		if l == "x": return 0
+		if l == "y": return 1
+		if l == "z": return 2
+		if l == "w": return 3
+		return -1
+	except Exception:
+		return -1
+
+def _flatten_params(params: Any, prefix: str = "") -> Dict[str, Any]:
+	"""
+	Convert nested dicts/lists into a flat map of dotted keys -> primitive values
+	- Dict: a.b.c
+	- List/Tuple: a.0, a.1, ... ; special-case 3/4-length numeric vectors to a.x, a.y, a.z, a.w
+	"""
+	out: Dict[str, Any] = {}
+	try:
+		base = prefix + "." if prefix else ""
+		if isinstance(params, dict):
+			for k, v in params.items():
+				if not isinstance(k, str):
+					continue
+				nk = base + k
+				if isinstance(v, (str, int, float, bool)) or v is None:
+					out[nk] = "" if v is None else v
+				elif isinstance(v, (list, tuple)):
+					# Heuristic: if length is 3/4 and all are numbers, emit axis names
+					use_axes = len(v) in (3, 4) and all(isinstance(x, (int, float)) for x in v)
+					for idx, item in enumerate(v):
+						suffix = ("x","y","z","w")[idx] if use_axes else str(idx)
+						key = f"{nk}.{suffix}"
+						if isinstance(item, (str, int, float, bool)) or item is None:
+							out[key] = "" if item is None else item
+						else:
+							# Deeply nested in arrays -> fall back to JSON for that leaf
+							try:
+								out[key] = json.dumps(item)
+							except Exception:
+								out[key] = str(item)
+				else:
+					# Object that is not a primitive/array -> recurse if possible, else JSON-string
+					if isinstance(v, dict):
+						out.update(_flatten_params(v, nk))
+					else:
+						try:
+							out[nk] = json.dumps(v)
+						except Exception:
+							out[nk] = str(v)
+		else:
+			# Non-dict root: store as-is (rare)
+			out[prefix or "value"] = params
+	except Exception:
+		pass
+	return out
+
+def _tooltip_for_flat_key(param_tooltips: Dict[str, str], flat_key: str) -> str:
+	"""
+	Find the best tooltip for a dotted flat key by trying exact match, then walking up parents.
+	"""
+	try:
+		if flat_key in param_tooltips:
+			return param_tooltips[flat_key]
+		parts = flat_key.split(".")
+		while len(parts) > 1:
+			parts = parts[:-1]
+			parent = ".".join(parts)
+			if parent in param_tooltips:
+				return param_tooltips[parent]
+	except Exception:
+		pass
+	return ""
+
 
 def _abspath(path: str) -> str:
 	# Resolve Blender-style paths (supports // relative to current .blend)
@@ -174,13 +248,16 @@ def _set_component_on_object(obj, identifier: str):
 		# Optionally remove old param keys that were provided by prior component
 		if isinstance(old_component, str) and old_component and old_component != identifier:
 			old_params = _get_params_for_identifier(old_component)
-			if isinstance(old_params, dict):
-				for key in old_params.keys():
+			try:
+				old_flat = _flatten_params(old_params or {})
+				for key in list(old_flat.keys()):
 					try:
-						if key in obj and key not in new_params:
+						if key in obj:
 							del obj[key]
 					except Exception:
 						pass
+			except Exception:
+				pass
 		# Set the main component property
 		obj["component"] = identifier
 		try:
@@ -189,17 +266,14 @@ def _set_component_on_object(obj, identifier: str):
 			ui.update(description=f"Primary component ID: {identifier}")
 		except Exception:
 			pass
-		# Set parameter properties
-		for key, value in (new_params or {}).items():
+		# Set parameter properties (flatten nested params to dotted keys)
+		flat = _flatten_params(new_params or {})
+		for key, value in flat.items():
 			try:
-				if isinstance(value, (str, int, float, bool)) or value is None:
-					obj[key] = "" if value is None else value
-				else:
-					# Store complex types as JSON strings
-					obj[key] = json.dumps(value)
+				obj[key] = "" if value is None else value
 				# Set tooltip if available
 				try:
-					desc = param_tooltips.get(key)
+					desc = _tooltip_for_flat_key(param_tooltips, key)
 					if isinstance(desc, str) and desc:
 						ui = obj.id_properties_ui(key)
 						ui.update(description=desc)
@@ -309,7 +383,8 @@ def _draw_into_custom_props(self, context: "bpy.types.Context"):
 			r = inner.row(align=True)
 			r.label(text=f"Component #{idx}: {comp_name}", icon="DOT")
 			params = _get_params_for_identifier(comp_name)
-			for pkey in (params or {}).keys():
+			flat = _flatten_params(params or {})
+			for pkey in flat.keys():
 				prop_name = _param_key_for_index(pkey, idx)
 				if prop_name in obj:
 					try:
@@ -353,7 +428,8 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 					row = box.row(align=True)
 					row.label(text=f"Component #{idx}: {comp_name}", icon="DOT")
 					params = _get_params_for_identifier(comp_name)
-					for pkey in (params or {}).keys():
+					flat = _flatten_params(params or {})
+					for pkey in flat.keys():
 						prop_name = _param_key_for_index(pkey, idx)
 						if prop_name in obj:
 							try:
@@ -429,18 +505,16 @@ class THREE64_OT_add_selected_component(bpy.types.Operator):
 				pass
 
 			# Append param keys with index suffix: only set missing keys; never delete or overwrite existing ones
-			for key, value in (params or {}).items():
+			flat = _flatten_params(params or {})
+			for key, value in flat.items():
 				prop_key = _param_key_for_index(key, index)
 				if prop_key in obj:
 					continue
 				try:
-					if isinstance(value, (str, int, float, bool)) or value is None:
-						obj[prop_key] = "" if value is None else value
-					else:
-						obj[prop_key] = json.dumps(value)
+					obj[prop_key] = "" if value is None else value
 					# set tooltip if available
 					try:
-						desc = param_tooltips.get(key)
+						desc = _tooltip_for_flat_key(param_tooltips, key)
 						if isinstance(desc, str) and desc:
 							ui = obj.id_properties_ui(prop_key)
 							ui.update(description=desc)

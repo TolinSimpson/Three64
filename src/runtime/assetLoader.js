@@ -320,6 +320,64 @@ export class SceneLoader {
       }
       return out;
     };
+    const expandDotted = (flat) => {
+      if (!flat || typeof flat !== "object" || Array.isArray(flat)) return flat;
+      const out = {};
+      const axisToIndex = { x: 0, y: 1, z: 2, w: 3 };
+      const setPath = (obj, segments, value) => {
+        if (!segments.length) return;
+        const [headRaw, ...rest] = segments;
+        const headLower = String(headRaw).toLowerCase();
+        const idxFromAxis = axisToIndex.hasOwnProperty(headLower) ? axisToIndex[headLower] : null;
+        const isNumericIndex = /^\d+$/.test(headRaw);
+        if (rest.length === 0) {
+          if (isNumericIndex || idxFromAxis !== null) {
+            const idx = isNumericIndex ? parseInt(headRaw, 10) : idxFromAxis;
+            const arr = Array.isArray(obj) ? obj : [];
+            while (arr.length <= idx) arr.push(undefined);
+            arr[idx] = value;
+            return arr;
+          }
+          if (Array.isArray(obj)) {
+            // Cannot set named key on array; convert to object wrapper
+            const o = {};
+            for (let i = 0; i < obj.length; i++) o[i] = obj[i];
+            o[headRaw] = value;
+            return o;
+          }
+          obj[headRaw] = value;
+          return obj;
+        }
+        // Need to descend
+        let nextContainer;
+        if (isNumericIndex || idxFromAxis !== null) {
+          const idx = isNumericIndex ? parseInt(headRaw, 10) : idxFromAxis;
+          nextContainer = Array.isArray(obj) ? obj : [];
+          while (nextContainer.length <= idx) nextContainer.push(undefined);
+          const child = nextContainer[idx];
+          const updated = setPath(child && typeof child === "object" ? child : {}, rest, value);
+          nextContainer[idx] = updated;
+          return nextContainer;
+        } else {
+          nextContainer = (obj && typeof obj === "object" && !Array.isArray(obj)) ? obj : {};
+          const child = nextContainer[headRaw];
+          nextContainer[headRaw] = setPath(child && typeof child === "object" ? child : {}, rest, value);
+          return nextContainer;
+        }
+      };
+      for (const [k, v] of Object.entries(flat)) {
+        const segs = String(k).split(".");
+        const updated = setPath(out, segs, v);
+        // setPath returns updated container when the root becomes array
+        if (Array.isArray(updated)) {
+          // If root became an array, merge back into object by numeric keys
+          for (let i = 0; i < updated.length; i++) {
+            if (updated[i] !== undefined) out[i] = updated[i];
+          }
+        }
+      }
+      return out;
+    };
     const getDefaultsForType = async (type) => {
       const key = normalize(type);
       if (this._componentPresetCache.has(key)) return this._componentPresetCache.get(key);
@@ -414,7 +472,8 @@ export class SceneLoader {
     for (const [idxStr, def] of Object.entries(numbered)) {
       const idx = parseInt(idxStr, 10);
       const overrides = perIndexParams[idx] || {};
-      add(def.type, overrides && Object.keys(overrides).length ? overrides : def.params);
+      const expanded = expandDotted(overrides);
+      add(def.type, expanded && Object.keys(expanded).length ? expanded : def.params);
     }
 
     // First (un-numbered) component: support plain keys as params if not provided via options/params/props
@@ -432,7 +491,8 @@ export class SceneLoader {
           if (suffixRx.test(k)) continue; // has numeric suffix -> belongs to numbered component
           derived[k] = v;
         }
-        firstParams = Object.keys(derived).length ? derived : undefined;
+        const expanded = expandDotted(derived);
+        firstParams = expanded && Object.keys(expanded).length ? expanded : undefined;
       }
       add(firstType, firstParams);
     }
