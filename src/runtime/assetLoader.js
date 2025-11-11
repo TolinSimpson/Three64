@@ -182,7 +182,7 @@ export class SceneLoader {
         }
         added.push(root);
       } else if (entry.type === "light") {
-      const color = new Color(entry.color ?? 0xffffff);
+      const color = new Color(normalizeHexColor(entry.color ?? 0xffffff));
         const intensity = entry.intensity ?? 1.0;
         let light;
         if (entry.kind === "directional") {
@@ -279,7 +279,7 @@ export class SceneLoader {
         }
         added.push(root);
       } else if (entry.type === "light") {
-        const color = new Color(entry.color ?? 0xffffff);
+        const color = new Color(normalizeHexColor(entry.color ?? 0xffffff));
         const intensity = entry.intensity ?? 1.0;
         let light;
         if (entry.kind === "directional") {
@@ -689,4 +689,27 @@ export function quantizationPlan({ width, height, numColors }) {
   const paletteBytes = estimatePaletteBytes(numColors);
   const pixelsBytes = (width * height * bpp) / 8;
   return { bpp, paletteBytes, pixelsBytes, totalBytes: pixelsBytes + paletteBytes };
+}
+
+// -----------------------------
+// Color helpers
+// -----------------------------
+export function normalizeHexColor(input) {
+  try {
+    if (input == null) return 0xffffff;
+    if (typeof input === "number") return input;
+    let s = String(input).trim();
+    if (!s) return 0xffffff;
+    if (s.startsWith("#")) s = s.slice(1);
+    if (s.toLowerCase().startsWith("0x")) s = s.slice(2);
+    s = s.replace(/[^0-9a-f]/gi, "").slice(0, 6);
+    if (s.length === 3) {
+      // expand #abc -> #aabbcc
+      s = s.split("").map(ch => ch + ch).join("");
+    }
+    if (s.length < 6) s = s.padStart(6, "0");
+    return parseInt(s, 16);
+  } catch {
+    return 0xffffff;
+  }
 }

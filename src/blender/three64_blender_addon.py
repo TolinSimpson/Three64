@@ -21,6 +21,7 @@ _cached_items: List[Tuple[str, str, str]] = []
 _cached_dir_abs: str = ""
 _cached_index: Dict[str, str] = {}
 _cached_param_desc: Dict[str, Dict[str, str]] = {}
+_cached_param_types: Dict[str, Dict[str, str]] = {}
 
 def _axis_name_to_index(name: str) -> int:
 	try:
@@ -96,6 +97,59 @@ def _tooltip_for_flat_key(param_tooltips: Dict[str, str], flat_key: str) -> str:
 		pass
 	return ""
 
+def _hex_from_value(v: Any) -> str:
+	try:
+		# Already hex string
+		if isinstance(v, str):
+			s = v.strip()
+			if s.startswith("#"):
+				s = s[1:]
+			if s.lower().startswith("0x"):
+				s = s[2:]
+			# Keep only hex digits and clamp
+			s = "".join(ch for ch in s if ch.lower() in "0123456789abcdef")[:6].ljust(6, "0")
+			return f"#{s.lower()}"
+		# Numeric to hex
+		if isinstance(v, (int, float)):
+			n = int(v)
+			if n < 0: n = 0
+			if n > 0xFFFFFF: n = 0xFFFFFF
+			return f"#{n:06x}"
+	except Exception:
+		pass
+	# Fallback
+	return "#000000"
+
+def _rgb_tuple_from_hex(s: Any) -> tuple:
+	try:
+		if not isinstance(s, str):
+			return (1.0, 1.0, 1.0)
+		t = s.strip()
+		if t.startswith("#"):
+			t = t[1:]
+		if t.lower().startswith("0x"):
+			t = t[2:]
+		t = "".join(ch for ch in t if ch.lower() in "0123456789abcdef")[:6].rjust(6, "0")
+		n = int(t, 16)
+		r = ((n >> 16) & 0xFF) / 255.0
+		g = ((n >> 8) & 0xFF) / 255.0
+		b = (n & 0xFF) / 255.0
+		return (r, g, b)
+	except Exception:
+		return (1.0, 1.0, 1.0)
+
+def _is_color_key(identifier: str, flat_key: str) -> bool:
+	try:
+		tmap = _cached_param_types.get(identifier, {})
+		t = tmap.get(flat_key)
+		if isinstance(t, str) and t.lower() == "color":
+			return True
+		# Heuristic fallback
+		lk = flat_key.lower()
+		return lk.endswith("color") or ".color" in lk
+	except Exception:
+		return False
+
 
 def _abspath(path: str) -> str:
 	# Resolve Blender-style paths (supports // relative to current .blend)
@@ -149,7 +203,7 @@ def _load_items_from_dir(dir_path_abs: str) -> List[Tuple[str, str, str]]:
 
 
 def _ensure_cache(context: "bpy.types.Context") -> List[Tuple[str, str, str]]:
-	global _cached_items, _cached_dir_abs, _cached_index, _cached_param_desc
+	global _cached_items, _cached_dir_abs, _cached_index, _cached_param_desc, _cached_param_types
 	prefs = _get_preferences()
 	base_dir = prefs.component_data_dir if prefs else "//component-data"
 	dir_path_abs = _abspath(base_dir)
@@ -160,15 +214,17 @@ def _ensure_cache(context: "bpy.types.Context") -> List[Tuple[str, str, str]]:
 		# Build identifier -> file path index
 		_cached_index = {}
 		_cached_param_desc = {}
+		_cached_param_types = {}
 		try:
 			for p in _read_component_files(dir_path_abs):
 				identifier = os.path.splitext(os.path.basename(p))[0]
 				_cached_index[identifier] = p
-				# Preload parameter descriptions
+				# Preload parameter descriptions and types
 				try:
 					with open(p, "r", encoding="utf-8") as f:
 						data = json.load(f)
 					desc_map: Dict[str, str] = {}
+					type_map: Dict[str, str] = {}
 					pd = (data or {}).get("paramDescriptions")
 					if isinstance(pd, dict):
 						for k, v in pd.items():
@@ -179,12 +235,17 @@ def _ensure_cache(context: "bpy.types.Context") -> List[Tuple[str, str, str]]:
 							if isinstance(entry, dict):
 								n = entry.get("name") or entry.get("key")
 								d = entry.get("description") or entry.get("desc") or entry.get("tooltip")
+								t = entry.get("type")
 								if isinstance(n, str) and isinstance(d, str):
-                                    # normalize key to string
+									# normalize key to string
 									desc_map[n] = d
+								if isinstance(n, str) and isinstance(t, str):
+									type_map[n] = t
 					_cached_param_desc[identifier] = desc_map
+					_cached_param_types[identifier] = type_map
 				except Exception:
 					_cached_param_desc[identifier] = {}
+					_cached_param_types[identifier] = {}
 		except Exception:
 			_cached_index = {}
 			_cached_param_desc = {}
@@ -270,7 +331,10 @@ def _set_component_on_object(obj, identifier: str):
 		flat = _flatten_params(new_params or {})
 		for key, value in flat.items():
 			try:
-				obj[key] = "" if value is None else value
+				val = "" if value is None else value
+				if _is_color_key(identifier, key):
+					val = _hex_from_value(val)
+				obj[key] = val
 				# Set tooltip if available
 				try:
 					desc = _tooltip_for_flat_key(param_tooltips, key)
@@ -388,7 +452,19 @@ def _draw_into_custom_props(self, context: "bpy.types.Context"):
 				prop_name = _param_key_for_index(pkey, idx)
 				if prop_name in obj:
 					try:
-						inner.prop(obj, f'["{prop_name}"]', text=pkey)
+						if _is_color_key(comp_name, pkey):
+							# Sync picker from stored hex and set target, then draw picker and hex field
+							try:
+								current = obj.get(prop_name, "#ffffff")
+								obj.three64_color_picker_target = prop_name
+								obj.three64_color_picker = _rgb_tuple_from_hex(current)
+							except Exception:
+								pass
+							row = inner.row(align=True)
+							row.prop(obj, "three64_color_picker", text=pkey)
+							row.prop(obj, f'["{prop_name}"]', text="Hex")
+						else:
+							inner.prop(obj, f'["{prop_name}"]', text=pkey)
 					except Exception:
 						pass
 	except Exception:
@@ -433,7 +509,18 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 						prop_name = _param_key_for_index(pkey, idx)
 						if prop_name in obj:
 							try:
-								box.prop(obj, f'["{prop_name}"]', text=pkey)
+								if _is_color_key(comp_name, pkey):
+									try:
+										current = obj.get(prop_name, "#ffffff")
+										obj.three64_color_picker_target = prop_name
+										obj.three64_color_picker = _rgb_tuple_from_hex(current)
+									except Exception:
+										pass
+									row2 = box.row(align=True)
+									row2.prop(obj, "three64_color_picker", text=pkey)
+									row2.prop(obj, f'["{prop_name}"]', text="Hex")
+								else:
+									box.prop(obj, f'["{prop_name}"]', text=pkey)
 							except Exception:
 								pass
 			except Exception:
@@ -468,6 +555,25 @@ class THREE64_OT_open_addon_preferences(bpy.types.Operator):
 			pass
 		return {"FINISHED"}
 
+def _on_color_picker_changed(self, context: "bpy.types.Context"):
+	try:
+		target = getattr(self, "three64_color_picker_target", "")
+		if not isinstance(target, str) or not target:
+			return
+		col = getattr(self, "three64_color_picker", (1.0, 1.0, 1.0))
+		if not isinstance(col, (list, tuple)) or len(col) < 3:
+			return
+		r = max(0, min(255, int(round(float(col[0]) * 255))))
+		g = max(0, min(255, int(round(float(col[1]) * 255))))
+		b = max(0, min(255, int(round(float(col[2]) * 255))))
+		self[target] = f"#{(r<<16 | g<<8 | b):06x}"
+		try:
+			ui = self.id_properties_ui(target)
+			ui.update(description=f"Hex color for {target}")
+		except Exception:
+			pass
+	except Exception:
+		pass
 
 class THREE64_OT_add_selected_component(bpy.types.Operator):
 	bl_idname = "three64.add_selected_component"
@@ -511,7 +617,10 @@ class THREE64_OT_add_selected_component(bpy.types.Operator):
 				if prop_key in obj:
 					continue
 				try:
-					obj[prop_key] = "" if value is None else value
+					val = "" if value is None else value
+					if _is_color_key(identifier, key):
+						val = _hex_from_value(val)
+					obj[prop_key] = val
 					# set tooltip if available
 					try:
 						desc = _tooltip_for_flat_key(param_tooltips, key)
@@ -547,6 +656,25 @@ def register():
 		items=_enum_items,
 		update=_on_component_changed,
 	)
+	# Color picker helpers
+	try:
+		bpy.types.Object.three64_color_picker = bpy.props.FloatVectorProperty(
+			name="Color",
+			size=3,
+			subtype="COLOR",
+			min=0.0, max=1.0,
+			default=(1.0, 1.0, 1.0),
+			update=lambda self, ctx: _on_color_picker_changed(self, ctx),
+		)
+	except Exception:
+		pass
+	try:
+		bpy.types.Object.three64_color_picker_target = bpy.props.StringProperty(
+			name="Color Target",
+			default="",
+		)
+	except Exception:
+		pass
 	# Also draw within the default Custom Properties panel for convenience
 	try:
 		bpy.types.OBJECT_PT_custom_props.append(_draw_into_custom_props)
@@ -558,6 +686,15 @@ def unregister():
 	# Remove custom props extension
 	try:
 		bpy.types.OBJECT_PT_custom_props.remove(_draw_into_custom_props)
+	except Exception:
+		pass
+	# Remove helper properties
+	try:
+		del bpy.types.Object.three64_color_picker
+	except Exception:
+		pass
+	try:
+		del bpy.types.Object.three64_color_picker_target
 	except Exception:
 		pass
 	# Remove property
