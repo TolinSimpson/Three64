@@ -5,6 +5,7 @@ import { SceneLoader, GLTFAssetLoader } from "./assetLoader.js";
 import { BudgetTracker, initDebugOverlay, Debug } from "./debug.js";
 import { config, getInternalResolution } from "./engine.js";
 import { Object3D } from "three";
+import DefaultSceneModule from "./default-assets/default-scene.js";
 import { loadJSON } from "./io.js";
 // Register built-in components
 import "./default-assets/feature-showcase.js";
@@ -151,13 +152,12 @@ async function start() {
       app.loading.hide();
     }
   } else if (!entry || !entry.module) {
-    // Fallback: built-in default scene module
-    const moduleUrl = new URL("/src/runtime/default-assets/default-scene.js", document.baseURI).href;
+    // Fallback: built-in default scene module (bundled)
     try {
       app.loading.show("Loading scene...");
-      const mod = await import(moduleUrl);
-      const def = mod.default || mod;
-      const baseUrl = moduleUrl.replace(/\/[^\/]*$/, "");
+      const def = DefaultSceneModule?.default || DefaultSceneModule;
+      // Assets for the default scene live under public/default-assets/
+      const baseUrl = new URL("default-assets/", document.baseURI).href;
       const loader = new SceneLoader(app);
       await loader.loadFromDefinition(def, baseUrl);
       app.loading.setProgress(1);

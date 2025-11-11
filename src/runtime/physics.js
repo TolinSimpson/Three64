@@ -37,7 +37,7 @@ export class PhysicsWorld {
       const pos = geom.getAttribute("position");
       if (!pos) return;
       const m = o.matrixWorld;
-      const v = new THREE.Vector3();
+      const v = new Vector3();
       for (let i = 0; i < pos.count; i++) {
         v.fromBufferAttribute(pos, i).applyMatrix4(m);
         worldPoints.push(v.clone());
@@ -219,9 +219,24 @@ export class PhysicsWorld {
       if (typeof window !== "undefined" && typeof window.Ammo !== "undefined") {
         factory = window.Ammo;
       } else {
-        // Load Ammo from CDN at runtime; avoid bundling via webpackIgnore
-        const mod = await import(/* webpackIgnore: true */ 'https://cdn.jsdelivr.net/npm/ammo.js@0.0.10/builds/ammo.wasm.js');
-        factory = mod?.default || mod?.Ammo || mod;
+        // Prefer locally-copied asm.js build first (most commonly present), then wasm, then CDN
+        const localJs = new URL('vendor/ammo/ammo.js', document.baseURI).href;
+        const localWasm = new URL('vendor/ammo/ammo.wasm.js', document.baseURI).href;
+        let ok = false;
+        try { await loadScript(localJs); ok = true; } catch {}
+        if (!ok) { try { await loadScript(localWasm); ok = true; } catch {} }
+        if (!ok) {
+          // CDN fallbacks
+          const cdnJs = 'https://cdn.jsdelivr.net/npm/ammo.js@0.0.10/builds/ammo.js';
+          const cdnWasm = 'https://cdn.jsdelivr.net/npm/ammo.js@0.0.10/builds/ammo.wasm.js';
+          const unpkgJs = 'https://unpkg.com/ammo.js@0.0.10/builds/ammo.js';
+          const unpkgWasm = 'https://unpkg.com/ammo.js@0.0.10/builds/ammo.wasm.js';
+          try { await loadScript(cdnJs); ok = true; } catch {}
+          if (!ok) { try { await loadScript(cdnWasm); ok = true; } catch {} }
+          if (!ok) { try { await loadScript(unpkgJs); ok = true; } catch {} }
+          if (!ok) { await loadScript(unpkgWasm); ok = true; }
+        }
+        factory = window.Ammo;
       }
       const Ammo = await (typeof factory === "function" ? factory() : factory);
       this.Ammo = Ammo;
@@ -288,4 +303,15 @@ export class PhysicsWorld {
       return null;
     }
   }
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = (e) => reject(e);
+    document.head.appendChild(s);
+  });
 }

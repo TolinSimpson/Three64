@@ -5,6 +5,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import webpack from 'webpack';
+import CopyWebpackPlugin from 'copy-webpack-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +37,42 @@ const config = {
   module: {
     rules: [],
   },
+  plugins: [
+    new CopyWebpackPlugin({
+      patterns: [
+        {
+          from: path.resolve(__dirname, 'runtime/default-assets'),
+          to: path.resolve(__dirname, '../public/default-assets'),
+          noErrorOnMissing: true,
+        },
+        {
+          from: path.resolve(__dirname, '../node_modules/ammo.js/builds'),
+          to: path.resolve(__dirname, '../public/vendor/ammo'),
+          noErrorOnMissing: true,
+        },
+        {
+          from: path.resolve(__dirname, '../node_modules/ammo.js/ammo.js'),
+          to: path.resolve(__dirname, '../public/vendor/ammo/ammo.js'),
+          noErrorOnMissing: true,
+        },
+        {
+          from: path.resolve(__dirname, '../node_modules/ammo.js/ammo.wasm.js'),
+          to: path.resolve(__dirname, '../public/vendor/ammo/ammo.wasm.js'),
+          noErrorOnMissing: true,
+        },
+        {
+          from: path.resolve(__dirname, '../node_modules/ammo.js/dist/ammo.js'),
+          to: path.resolve(__dirname, '../public/vendor/ammo/ammo.js'),
+          noErrorOnMissing: true,
+        },
+        {
+          from: path.resolve(__dirname, '../node_modules/ammo.js/dist/ammo.wasm.js'),
+          to: path.resolve(__dirname, '../public/vendor/ammo/ammo.wasm.js'),
+          noErrorOnMissing: true,
+        },
+      ],
+    }),
+  ],
   devtool: 'source-map',
   stats: 'minimal',
 };

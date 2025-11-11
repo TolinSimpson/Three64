@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "serve": "npx http-server -c-1 -p 5173 .",
+    "serve": "npx http-server -c-1 -p 5173 public",
     "test": "echo \"No tests yet. Add Jest later.\" && exit 0",
     "editor": "node src/editor/cli.mjs",
     "build": "node src/build.js"
@@ -12,7 +12,8 @@
   "bin": {},
   "devDependencies": {
     "webpack": "^5.95.0",
-    "webpack-cli": "^5.1.4"
+    "webpack-cli": "^5.1.4",
+    "copy-webpack-plugin": "^11.0.0"
   },
   "dependencies": {
     "three": "^0.161.0",

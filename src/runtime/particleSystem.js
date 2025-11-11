@@ -46,7 +46,7 @@ export class ParticleSystem {
     if (!this.atlas) {
       const loader = new TextureLoader();
       loader.load(
-        "/src/runtime/default-assets/default-particle.png",
+        "default-assets/default-particle.png",
         (tex) => {
           tex.minFilter = NearestFilter;
           tex.magFilter = NearestFilter;

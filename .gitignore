@@ -1,2 +1,6 @@
 node_modules/
 
+public/default-assets/
+public/runtime.js
+public/runtime.js.map
+public/runtime.js.LICENSE.txt
