@@ -1,5 +1,19 @@
 'use strict';
-import * as THREE from "three";
+import {
+  DataTexture,
+  RGBAFormat,
+  PlaneGeometry,
+  InstancedBufferGeometry,
+  InstancedMesh,
+  MeshBasicMaterial,
+  Vector3,
+  TextureLoader,
+  Matrix4,
+  Quaternion,
+  DynamicDrawUsage,
+  NearestFilter,
+  NormalBlending,
+} from "three";
 import { config } from "./engine.js";
 
 export class ParticleSystem {
@@ -13,29 +27,29 @@ export class ParticleSystem {
     this._positions = new Array(this.maxParticles);
     this._scales = new Array(this.maxParticles);
 
-    const quadGeo = new THREE.PlaneGeometry(1, 1);
-    this.geometry = new THREE.InstancedBufferGeometry().copy(quadGeo);
+    const quadGeo = new PlaneGeometry(1, 1);
+    this.geometry = new InstancedBufferGeometry().copy(quadGeo);
     this.geometry.instanceCount = this.maxParticles;
 
-    const placeholder = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+    const placeholder = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat);
     placeholder.needsUpdate = true;
-    const mat = new THREE.MeshBasicMaterial({
+    const mat = new MeshBasicMaterial({
       map: this.atlas || placeholder,
       transparent: true,
-      blending: THREE.NormalBlending,
+      blending: NormalBlending,
       depthWrite: false,
     });
-    this.mesh = new THREE.InstancedMesh(quadGeo, mat, this.maxParticles);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh = new InstancedMesh(quadGeo, mat, this.maxParticles);
+    this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
 
     // Load fallback atlas if none provided
     if (!this.atlas) {
-      const loader = new THREE.TextureLoader();
+      const loader = new TextureLoader();
       loader.load(
         "/src/runtime/default-assets/default-particle.png",
         (tex) => {
-          tex.minFilter = THREE.NearestFilter;
-          tex.magFilter = THREE.NearestFilter;
+          tex.minFilter = NearestFilter;
+          tex.magFilter = NearestFilter;
           tex.generateMipmaps = false;
           this.atlas = tex;
           if (this.mesh && this.mesh.material) {
@@ -64,9 +78,9 @@ export class ParticleSystem {
     const idx = this.count++;
     this._positions[idx] = position.clone();
     this._scales[idx] = scale;
-    const m = new THREE.Matrix4();
-    const q = this.camera ? this.camera.quaternion : new THREE.Quaternion();
-    m.compose(position, q, new THREE.Vector3(scale, scale, scale));
+    const m = new Matrix4();
+    const q = this.camera ? this.camera.quaternion : new Quaternion();
+    m.compose(position, q, new Vector3(scale, scale, scale));
     this.mesh.setMatrixAt(idx, m);
     this.mesh.instanceMatrix.needsUpdate = true;
     return true;
@@ -76,8 +90,8 @@ export class ParticleSystem {
     // Billboard to camera each frame
     if (this.camera && this.count > 0) {
       const q = this.camera.quaternion;
-      const m = new THREE.Matrix4();
-      const s = new THREE.Vector3();
+      const m = new Matrix4();
+      const s = new Vector3();
       for (let i = 0; i < this.count; i++) {
         const p = this._positions[i];
         const k = this._scales[i] ?? 1;

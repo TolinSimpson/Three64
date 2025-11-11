@@ -10,7 +10,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const config = {
-  mode: process.env.NODE_ENV || 'development',
+  // Enable tree-shaking and minification by default
+  mode: process.env.NODE_ENV || 'production',
   context: __dirname,
   target: 'web',
   entry: './runtime/main.js',
@@ -20,6 +21,17 @@ const config = {
   },
   resolve: {
     extensions: ['.js'],
+    fallback: {
+      fs: false,
+      path: false,
+    },
+  },
+  optimization: {
+    usedExports: true,            // mark unused exports for pruning
+    sideEffects: true,            // respect package sideEffects flags
+    concatenateModules: true,     // scope hoisting
+    minimize: true,               // terser in production
+    splitChunks: false,           // keep single-file bundle unless code-splitting is explicit
   },
   module: {
     rules: [],

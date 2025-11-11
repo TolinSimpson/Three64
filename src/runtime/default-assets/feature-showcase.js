@@ -1,5 +1,13 @@
 'use strict';
-import * as THREE from "three";
+import {
+  Vector3,
+  CylinderGeometry,
+  MeshLambertMaterial,
+  PlaneGeometry,
+  BoxGeometry,
+  Mesh,
+  Color,
+} from "three";
 import { ParticleSystem } from "../particleSystem.js";
 import { Component, ComponentRegistry } from "../component.js";
 
@@ -12,22 +20,22 @@ class FeatureShowcase extends Component {
     const app = this.game;
     const { scene, camera } = app.rendererCore;
 
-    const pos = new THREE.Vector3();
+    const pos = new Vector3();
     this.object.getWorldPosition(pos);
     const baseX = pos.x || 0;
     const baseZ = pos.z || 0;
 
     const width = 30, depth = 12;
-    const room = new THREE.Mesh(
-      new THREE.PlaneGeometry(width, depth, 1, 1),
-      new THREE.MeshLambertMaterial({ color: 0xf0f0f0 })
+    const room = new Mesh(
+      new PlaneGeometry(width, depth, 1, 1),
+      new MeshLambertMaterial({ color: 0xf0f0f0 })
     );
     room.rotation.x = -Math.PI / 2;
     room.position.set(baseX, 0, baseZ);
     scene.add(room);
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    const wallGeo = new THREE.BoxGeometry(width, 3, 0.25);
-    const backWall = new THREE.Mesh(wallGeo, wallMat);
+    const wallMat = new MeshLambertMaterial({ color: 0xffffff });
+    const wallGeo = new BoxGeometry(width, 3, 0.25);
+    const backWall = new Mesh(wallGeo, wallMat);
     backWall.position.set(baseX, 1.5, baseZ - depth / 2);
     scene.add(backWall);
 
@@ -38,9 +46,9 @@ class FeatureShowcase extends Component {
       audio: { x: baseX + padSpacing },
     };
     const addMarkerX = (x, color) => {
-      const post = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.05, 0.05, 1.2, 8),
-        new THREE.MeshLambertMaterial({ color })
+      const post = new Mesh(
+        new CylinderGeometry(0.05, 0.05, 1.2, 8),
+        new MeshLambertMaterial({ color })
       );
       post.position.set(x, 0.6, baseZ - 3.2);
       scene.add(post);
@@ -48,13 +56,13 @@ class FeatureShowcase extends Component {
       post2.position.set(x, 0.6, baseZ - 0.8);
       scene.add(post2);
     };
-    addMarkerX(zones.geometry.x, new THREE.Color(0x22cc88));
-    addMarkerX(zones.particles.x, new THREE.Color(0xccaa22));
-    addMarkerX(zones.audio.x, new THREE.Color(0xaa2244));
+    addMarkerX(zones.geometry.x, new Color(0x22cc88));
+    addMarkerX(zones.particles.x, new Color(0xccaa22));
+    addMarkerX(zones.audio.x, new Color(0xaa2244));
 
-    const cube = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshLambertMaterial({ color: 0x22cc88 })
+    const cube = new Mesh(
+      new BoxGeometry(1, 1, 1),
+      new MeshLambertMaterial({ color: 0x22cc88 })
     );
     cube.position.set(zones.geometry.x, 0.75, baseZ - 2);
     scene.add(cube);
@@ -71,7 +79,7 @@ class FeatureShowcase extends Component {
       const x = zones.particles.x + (Math.random() - 0.5) * 2.0;
       const y = 1 + Math.random() * 0.5;
       const z = baseZ - 2 + (Math.random() - 0.5) * 2.0;
-      particles.spawn(new THREE.Vector3(x, y, z), 0.2 + Math.random() * 0.3);
+      particles.spawn(new Vector3(x, y, z), 0.2 + Math.random() * 0.3);
       app.budget.addParticles(1);
     }
     let spawnTimer = 0;
@@ -82,7 +90,7 @@ class FeatureShowcase extends Component {
         const x = zones.particles.x + (Math.random() - 0.5) * 2.0;
         const y = 1 + Math.random() * 0.5;
         const z = baseZ - 2 + (Math.random() - 0.5) * 2.0;
-        particles.spawn(new THREE.Vector3(x, y, z), 0.2 + Math.random() * 0.3);
+        particles.spawn(new Vector3(x, y, z), 0.2 + Math.random() * 0.3);
         app.budget.addParticles(1);
       }
       particles.update(dt);

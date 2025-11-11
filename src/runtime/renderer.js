@@ -1,31 +1,45 @@
 'use strict';
 import { getInternalResolution } from "./engine.js";
 
-// three.js via CDN ESM
-import * as THREE from "three";
+import {
+  WebGLRenderer,
+  Scene,
+  Color,
+  PerspectiveCamera,
+  BoxGeometry,
+  MeshBasicMaterial,
+  Mesh,
+  WebGLRenderTarget,
+  NearestFilter,
+  RGBAFormat,
+  Vector2,
+  PlaneGeometry,
+  ShaderMaterial,
+  OrthographicCamera,
+} from "three";
 
 export class RendererCore {
   constructor(canvas) {
     const { width, height } = getInternalResolution();
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: false });
+    this.renderer = new WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: false });
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(width, height, false);
 
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x000000);
+    this.scene = new Scene();
+    this.scene.background = new Color(0x000000);
 
     const aspect = width / height;
-    this.camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1000);
+    this.camera = new PerspectiveCamera(60, aspect, 0.1, 1000);
     this.camera.position.set(0, 0, 3);
 
-    const geo = new THREE.BoxGeometry(1, 1, 1);
-    const mat = new THREE.MeshBasicMaterial({ color: 0x22cc88, wireframe: true });
-    this.cube = new THREE.Mesh(geo, mat);
+    const geo = new BoxGeometry(1, 1, 1);
+    const mat = new MeshBasicMaterial({ color: 0x22cc88, wireframe: true });
+    this.cube = new Mesh(geo, mat);
     this.scene.add(this.cube);
 
     // Render targets and post-process
-    const rtParams = { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, format: THREE.RGBAFormat }; 
-    this.colorTarget = new THREE.WebGLRenderTarget(width, height, rtParams);
+    const rtParams = { minFilter: NearestFilter, magFilter: NearestFilter, format: RGBAFormat }; 
+    this.colorTarget = new WebGLRenderTarget(width, height, rtParams);
     this.reducePass = new ColorReducePass(width, height);
   }
 
@@ -55,16 +69,16 @@ export class RendererCore {
 // Inlined post-process pass
 class ColorReducePass {
   constructor(width, height) {
-    this.scene = new THREE.Scene();
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    this.scene = new Scene();
+    this.camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-    const geometry = new THREE.PlaneGeometry(2, 2);
+    const geometry = new PlaneGeometry(2, 2);
     this.uniforms = {
       tDiffuse: { value: null },
-      resolution: { value: new THREE.Vector2(width, height) },
+      resolution: { value: new Vector2(width, height) },
     };
 
-    const material = new THREE.ShaderMaterial({
+    const material = new ShaderMaterial({
       uniforms: this.uniforms,
       vertexShader: `
         varying vec2 vUv;
@@ -113,7 +127,7 @@ class ColorReducePass {
       depthWrite: false,
     });
 
-    this.quad = new THREE.Mesh(geometry, material);
+    this.quad = new Mesh(geometry, material);
     this.scene.add(this.quad);
   }
 

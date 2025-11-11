@@ -4,7 +4,7 @@ import { PhysicsWorld } from "./physics.js";
 import { SceneLoader, GLTFAssetLoader } from "./assetLoader.js";
 import { BudgetTracker, initDebugOverlay, Debug } from "./debug.js";
 import { config, getInternalResolution } from "./engine.js";
-import * as THREE from "three";
+import { Object3D } from "three";
 import { loadJSON } from "./io.js";
 // Register built-in components
 import "./default-assets/feature-showcase.js";
@@ -24,7 +24,7 @@ function createApp() {
   const fps = new FPSController(canvas, rendererCore.camera);
   fps.setPhysics(physics);
 
-  const playerRig = new THREE.Object3D();
+  const playerRig = new Object3D();
   playerRig.name = "PlayerRig";
   const cam = rendererCore.camera;
   const eyeHeight = fps.eyeHeight;

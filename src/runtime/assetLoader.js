@@ -1,5 +1,15 @@
 'use strict';
-import * as THREE from "three";
+import {
+  Group,
+  Color,
+  MeshBasicMaterial,
+  MeshLambertMaterial,
+  NearestFilter,
+  Box3,
+  Vector3,
+  DirectionalLight,
+  AmbientLight,
+} from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { fitsInTMEM} from "./engine.js";
 import { BudgetTracker } from "./debug.js";
@@ -21,7 +31,7 @@ export class GLTFAssetLoader {
     const gltf = await this._loadAsync(url, onProgress);
 
     const root = gltf.scene || gltf.scenes?.[0];
-    if (!root) return { scene: new THREE.Group(), stats: { tris: 0, meshes: 0 } };
+    if (!root) return { scene: new Group(), stats: { tris: 0, meshes: 0 } };
 
     const stats = { tris: 0, meshes: 0, bonesMax: 0, materials: 0, textures: 0, tiles: 0 };
 
@@ -74,8 +84,8 @@ export class GLTFAssetLoader {
       } else {
         tilesUsed += 1;
       }
-      tex.minFilter = THREE.NearestFilter;
-      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = NearestFilter;
+      tex.magFilter = NearestFilter;
       tex.generateMipmaps = false;
       tex.needsUpdate = true;
     }
@@ -87,12 +97,12 @@ export class GLTFAssetLoader {
     const patched = mats.map((m) => {
       if (!m) return m;
       const params = {
-        color: m.color?.clone?.() || new THREE.Color(0xffffff),
+        color: m.color?.clone?.() || new Color(0xffffff),
         map: m.map || null,
         fog: true,
         transparent: m.transparent === true,
       };
-      const newMat = m.map ? new THREE.MeshBasicMaterial(params) : new THREE.MeshLambertMaterial(params);
+      const newMat = m.map ? new MeshBasicMaterial(params) : new MeshLambertMaterial(params);
       return newMat;
     });
     return Array.isArray(material) ? patched : patched[0];
@@ -167,14 +177,14 @@ export class SceneLoader {
         }
         added.push(root);
       } else if (entry.type === "light") {
-        const color = new THREE.Color(entry.color ?? 0xffffff);
+      const color = new Color(entry.color ?? 0xffffff);
         const intensity = entry.intensity ?? 1.0;
         let light;
         if (entry.kind === "directional") {
-          light = new THREE.DirectionalLight(color, intensity);
+          light = new DirectionalLight(color, intensity);
           if (entry.position) light.position.fromArray(entry.position);
         } else if (entry.kind === "ambient") {
-          light = new THREE.AmbientLight(color, intensity);
+          light = new AmbientLight(color, intensity);
         }
         if (light) {
           this.game.rendererCore.scene.add(light);
@@ -259,14 +269,14 @@ export class SceneLoader {
         }
         added.push(root);
       } else if (entry.type === "light") {
-        const color = new THREE.Color(entry.color ?? 0xffffff);
+        const color = new Color(entry.color ?? 0xffffff);
         const intensity = entry.intensity ?? 1.0;
         let light;
         if (entry.kind === "directional") {
-          light = new THREE.DirectionalLight(color, intensity);
+          light = new DirectionalLight(color, intensity);
           if (entry.position) light.position.fromArray(entry.position);
         } else if (entry.kind === "ambient") {
-          light = new THREE.AmbientLight(color, intensity);
+          light = new AmbientLight(color, intensity);
         }
         if (light) {
           this.game.rendererCore.scene.add(light);
@@ -363,14 +373,14 @@ export class SceneLoader {
     if (Array.isArray(t.position)) object3D.position.fromArray(t.position);
     if (Array.isArray(t.rotationEuler)) {
       const [rx, ry, rz] = t.rotationEuler;
-      object3D.rotation.set(THREE.MathUtils.degToRad(rx), THREE.MathUtils.degToRad(ry), THREE.MathUtils.degToRad(rz));
+      object3D.rotation.set((rx * Math.PI) / 180, (ry * Math.PI) / 180, (rz * Math.PI) / 180);
     }
     if (typeof t.scale === "number") object3D.scale.setScalar(t.scale);
     else if (Array.isArray(t.scale)) object3D.scale.fromArray(t.scale);
 
     if (typeof t.fitHeight === "number" && t.fitHeight > 0) {
-      const bounds = new THREE.Box3().setFromObject(object3D);
-      const size = new THREE.Vector3();
+      const bounds = new Box3().setFromObject(object3D);
+      const size = new Vector3();
       bounds.getSize(size);
       const current = size.y || 1;
       const s = t.fitHeight / current;
@@ -380,7 +390,7 @@ export class SceneLoader {
         object3D.position.y += -min.y * s;
       }
     } else if (t.anchorToGround) {
-      const bounds = new THREE.Box3().setFromObject(object3D);
+      const bounds = new Box3().setFromObject(object3D);
       const min = bounds.min.clone();
       object3D.position.y += -min.y;
     }

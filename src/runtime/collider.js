@@ -1,6 +1,6 @@
 'use strict';
 import { Component, ComponentRegistry } from "./component.js";
-import * as THREE from "three";
+import { MeshBasicMaterial, Vector3 } from "three";
 
 export default class Collider extends Component {
   Initialize() {
@@ -21,7 +21,7 @@ export default class Collider extends Component {
     let material = null;
     if (visible) {
       const color = typeof opts.color === "number" ? opts.color : 0x00ffff;
-      material = new THREE.MeshBasicMaterial({ color, wireframe: true });
+      material = new MeshBasicMaterial({ color, wireframe: true });
     }
 
     if (type === "convex") {
@@ -31,8 +31,8 @@ export default class Collider extends Component {
         if (fast && typeof physics._addConvexFromPoints === "function") {
           const worldPoints = [];
           const corners = [
-            new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(),
-            new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()
+            new Vector3(), new Vector3(), new Vector3(), new Vector3(),
+            new Vector3(), new Vector3(), new Vector3(), new Vector3()
           ];
           const addBoxCorners = (box, matrixWorld) => {
             const min = box.min, max = box.max;
@@ -77,14 +77,14 @@ export default class Collider extends Component {
               if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
               const box = m.geometry.boundingBox;
               const corners = [
-                new THREE.Vector3(box.min.x, box.min.y, box.min.z).applyMatrix4(m.matrixWorld),
-                new THREE.Vector3(box.max.x, box.min.y, box.min.z).applyMatrix4(m.matrixWorld),
-                new THREE.Vector3(box.min.x, box.max.y, box.min.z).applyMatrix4(m.matrixWorld),
-                new THREE.Vector3(box.min.x, box.min.y, box.max.z).applyMatrix4(m.matrixWorld),
-                new THREE.Vector3(box.max.x, box.max.y, box.min.z).applyMatrix4(m.matrixWorld),
-                new THREE.Vector3(box.max.x, box.min.y, box.max.z).applyMatrix4(m.matrixWorld),
-                new THREE.Vector3(box.min.x, box.max.y, box.max.z).applyMatrix4(m.matrixWorld),
-                new THREE.Vector3(box.max.x, box.max.y, box.max.z).applyMatrix4(m.matrixWorld)
+                new Vector3(box.min.x, box.min.y, box.min.z).applyMatrix4(m.matrixWorld),
+                new Vector3(box.max.x, box.min.y, box.min.z).applyMatrix4(m.matrixWorld),
+                new Vector3(box.min.x, box.max.y, box.min.z).applyMatrix4(m.matrixWorld),
+                new Vector3(box.min.x, box.min.y, box.max.z).applyMatrix4(m.matrixWorld),
+                new Vector3(box.max.x, box.max.y, box.min.z).applyMatrix4(m.matrixWorld),
+                new Vector3(box.max.x, box.min.y, box.max.z).applyMatrix4(m.matrixWorld),
+                new Vector3(box.min.x, box.max.y, box.max.z).applyMatrix4(m.matrixWorld),
+                new Vector3(box.max.x, box.max.y, box.max.z).applyMatrix4(m.matrixWorld)
               ];
               physics._addConvexFromPoints(corners, { visible, material });
             } else if (typeof physics._addConvexFromPoints === "function") {
@@ -92,7 +92,7 @@ export default class Collider extends Component {
               const pts = [];
               const pos = m.geometry.getAttribute("position");
               if (pos) {
-                const v = new THREE.Vector3();
+                const v = new Vector3();
                 for (let i = 0; i < pos.count; i++) {
                   v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
                   pts.push(v.clone());

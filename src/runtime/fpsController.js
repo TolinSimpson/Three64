@@ -1,5 +1,5 @@
 'use strict';
-import * as THREE from "three";
+import { Vector2, Vector3, Euler } from "three";
 import { ComponentRegistry } from "./component.js";
 
 export class FPSController {
@@ -22,7 +22,7 @@ export class FPSController {
     this.gravity = 9.8;
     this.velY = 0;
     this.grounded = false;
-    this.position = new THREE.Vector3(0, 0, 0); // player feet at y=0 ground
+    this.position = new Vector3(0, 0, 0); // player feet at y=0 ground
 
     // Ensure camera uses world up and initialize player from camera
     this.camera.up.set(0, 1, 0);
@@ -34,7 +34,7 @@ export class FPSController {
     this.pitch = camera.rotation.x;
     this.targetYaw = this.yaw;
     this.targetPitch = this.pitch;
-    this.euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    this.euler = new Euler(0, 0, 0, 'YXZ');
     this.physics = null;
 
     dom.addEventListener('click', () => this.lock());
@@ -126,7 +126,7 @@ export class FPSController {
     }
 
     // Horizontal input (Quake-style)
-    const moveInput = new THREE.Vector2(0, 0);
+    const moveInput = new Vector2(0, 0);
     let sprinting = false;
     let wantsJump = false;
     if (this.input) {
@@ -146,9 +146,9 @@ export class FPSController {
     }
     if (moveInput.lengthSq() > 1) moveInput.normalize();
 
-    const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-    const right = new THREE.Vector3(-forward.z, 0, forward.x);
-    const move = new THREE.Vector3();
+    const forward = new Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    const right = new Vector3(-forward.z, 0, forward.x);
+    const move = new Vector3();
     move.addScaledVector(forward, moveInput.y);
     move.addScaledVector(right, moveInput.x);
     const currentSpeed = this.speed * (sprinting ? this.sprintMultiplier : 1);
@@ -204,7 +204,7 @@ class FPSControllerComponent {
     this.object = object;
   }
   Initialize() {
-    const pos = new THREE.Vector3();
+    const pos = new Vector3();
     this.object.getWorldPosition(pos);
     const rig = this.game?.rendererCore?.camera?.parent;
     if (rig) {

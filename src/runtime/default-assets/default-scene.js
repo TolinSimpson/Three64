@@ -1,5 +1,5 @@
 'use strict';
-import * as THREE from "three";
+import { DirectionalLight, AmbientLight } from "three";
 import { createSkybox } from "../skybox.js";
 import { Scene } from "../scene.js";
 
@@ -16,10 +16,10 @@ export default class DefaultScene extends Scene {
 
   init() {
     const { scene, camera } = this.rendererCore;
-    const light = new THREE.DirectionalLight(0xffffff, 0.8);
+    const light = new DirectionalLight(0xffffff, 0.8);
     light.position.set(1, 1, 1);
     scene.add(light);
-    scene.add(new THREE.AmbientLight(0x404040, 0.5));
+    scene.add(new AmbientLight(0x404040, 0.5));
 
     const sky = createSkybox(camera);
     scene.add(sky);

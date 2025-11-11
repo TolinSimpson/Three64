@@ -1,5 +1,5 @@
 'use strict';
-import * as THREE from "three";
+import { BoxGeometry, ShaderMaterial, Color, BackSide, Mesh } from "three";
 
 export function createSkybox(camera, {
   size = 200,
@@ -8,11 +8,11 @@ export function createSkybox(camera, {
   offset = 0.0,
   exponent = 0.6,
 } = {}) {
-  const geometry = new THREE.BoxGeometry(size, size, size);
-  const material = new THREE.ShaderMaterial({
+  const geometry = new BoxGeometry(size, size, size);
+  const material = new ShaderMaterial({
     uniforms: {
-      topColor: { value: new THREE.Color(topColor) },
-      bottomColor: { value: new THREE.Color(bottomColor) },
+      topColor: { value: new Color(topColor) },
+      bottomColor: { value: new Color(bottomColor) },
       offset: { value: offset },
       exponent: { value: exponent },
     },
@@ -37,11 +37,11 @@ export function createSkybox(camera, {
         gl_FragColor = vec4(color, 1.0);
       }
     `,
-    side: THREE.BackSide,
+    side: BackSide,
     depthWrite: false,
   });
 
-  const sky = new THREE.Mesh(geometry, material);
+  const sky = new Mesh(geometry, material);
   sky.frustumCulled = false;
   sky.position.copy(camera.position);
   return sky;
