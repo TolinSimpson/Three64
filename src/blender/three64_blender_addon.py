@@ -2,7 +2,7 @@ bl_info = {
 	"name": "Three64 Component Data",
 	"author": "Three64",
 	"version": (1, 0, 0),
-	"blender": (3, 0, 0),
+	"blender": (4, 3, 0),
 	"location": "Properties > Object > Three64 Component",
 	"description": "Loads JSON component descriptors and exposes a dropdown on selected objects.",
 	"category": "Object",
@@ -15,6 +15,12 @@ except Exception:
 	bpy = cast(Any, None)  # type: ignore
 import os
 import json
+import math
+
+try:
+	import bmesh  # pyright: ignore[reportMissingImports]
+except Exception:
+	bmesh = cast(Any, None)  # type: ignore
 
 # Cached items to avoid re-parsing on every draw
 _cached_items: List[Tuple[str, str, str]] = []
@@ -430,6 +436,9 @@ def _draw_into_custom_props(self, context: "bpy.types.Context"):
 	row = box.row(align=True)
 	row.label(text="Three64 Component", icon="DECORATE")
 	row.operator(THREE64_OT_reload_component_data.bl_idname, text="", icon="FILE_REFRESH")
+	# Mark Navigable button
+	row_nav = box.row(align=True)
+	row_nav.operator("three64.mark_navigable", text="Mark Navigable", icon="CHECKBOX_HLT")
 	row2 = box.row(align=True)
 	row2.prop(obj, "three64_component", text="Component")
 	op = row2.operator("three64.add_selected_component", text="", icon="ADD")
@@ -487,6 +496,10 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 		row = layout.row(align=True)
 		row.operator("three64.open_addon_preferences", text="Open Add-on Preferences", icon="PREFERENCES")
 		if obj:
+			# Mark Navigable button
+			row0 = layout.row(align=True)
+			row0.operator("three64.mark_navigable", text="Mark Navigable", icon="CHECKBOX_HLT")
+
 			row3 = layout.row(align=True)
 			row3.prop(obj, "three64_component", text="Component")
 			row3.operator("three64.add_selected_component", text="", icon="ADD")
@@ -639,12 +652,195 @@ class THREE64_OT_add_selected_component(bpy.types.Operator):
 			return {"CANCELLED"}
 
 
+class THREE64_OT_mark_navigable(bpy.types.Operator):
+	bl_idname = "three64.mark_navigable"
+	bl_label = "Mark Navigable"
+	bl_description = "Set the object's navigable custom property to True (used by navmesh export)"
+	bl_options = {"REGISTER", "UNDO"}
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def execute(self, context: "bpy.types.Context"):
+		try:
+			obj = context.object
+			# Use scene-configured key if available; default to 'navigable'
+			prop_key = getattr(context.scene, "three64_nav_prop_key", "navigable")
+			obj[prop_key] = True
+			try:
+				ui = obj.id_properties_ui(prop_key)
+				ui.update(description="Marks this object as walkable for Three64 navmesh baking")
+			except Exception:
+				pass
+			self.report({"INFO"}, f"Set {prop_key}=True on '{obj.name}'")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to set navigable property")
+			return {"CANCELLED"}
+
+
+class THREE64_OT_bake_navmesh_json(bpy.types.Operator):
+	bl_idname = "three64.bake_navmesh_json"
+	bl_label = "Bake & Export NavMesh (JSON)"
+	bl_description = "Bake a simple navmesh over meshes tagged with a custom property and export JSON (vertices + triangles)"
+	bl_options = {"REGISTER", "UNDO"}
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return hasattr(context, "scene") and context.scene is not None and bmesh is not None and bpy is not None
+
+	def execute(self, context: "bpy.types.Context"):
+		try:
+			scene = context.scene
+			prop_key = getattr(scene, "three64_nav_prop_key", "navigable")
+			export_path = _abspath(getattr(scene, "three64_nav_export_path", "//navmesh.json"))
+			convert_axes = bool(getattr(scene, "three64_nav_convert_axes", True))
+			apply_mods = bool(getattr(scene, "three64_nav_apply_modifiers", True))
+			# three64_nav_slope_max is stored as radians due to unit='ROTATION'
+			slope_max_rad = float(getattr(scene, "three64_nav_slope_max", math.radians(45.0)))
+			slope_cos = math.cos(slope_max_rad if slope_max_rad <= math.pi else math.radians(slope_max_rad))
+
+			if not export_path:
+				self.report({"WARNING"}, "Invalid export path")
+				return {"CANCELLED"}
+
+			deps = context.evaluated_depsgraph_get()
+			# Collect tagged mesh objects
+			objects = []
+			for o in scene.objects:
+				try:
+					if o.type != 'MESH':
+						continue
+					val = o.get(prop_key)
+					if isinstance(val, (bool, int, float, str)):
+						if bool(val):
+							objects.append(o)
+				except Exception:
+					continue
+			if not objects:
+				self.report({"WARNING"}, f"No mesh objects with property '{prop_key}' found")
+				return {"CANCELLED"}
+
+			# Build combined triangle soup
+			verts = []  # list of [x,y,z]
+			tris = []   # flat indices
+			index_map = {}  # quantized coord -> index
+			quant = 1e-5
+			def key_from_xyz(x, y, z):
+				return (round(x/quant)*quant, round(y/quant)*quant, round(z/quant)*quant)
+			def emit_vertex(co):
+				x, y, z = co.x, co.y, co.z
+				if convert_axes:
+					tx, ty, tz = (x, z, -y)
+				else:
+					tx, ty, tz = (x, y, z)
+				k = key_from_xyz(tx, ty, tz)
+				idx = index_map.get(k, -1)
+				if idx >= 0:
+					return idx
+				index_map[k] = len(verts)
+				verts.append([float(tx), float(ty), float(tz)])
+				return len(verts) - 1
+
+			up = (0.0, 0.0, 1.0)  # Blender Z-up for slope test
+			for o in objects:
+				try:
+					ob_eval = o.evaluated_get(deps) if apply_mods else o
+					mesh = ob_eval.to_mesh(preserve_all_data_layers=False, depsgraph=deps) if apply_mods else o.to_mesh()
+					if not mesh:
+						continue
+					bm = bmesh.new()
+					try:
+						bm.from_mesh(mesh)
+						bmesh.ops.triangulate(bm, faces=bm.faces[:])
+						mat = ob_eval.matrix_world.copy()
+						for f in bm.faces:
+							# World-space vertices of the triangle
+							co = [mat @ v.co for v in (f.verts[0], f.verts[1], f.verts[2])]
+							# Compute world normal from triangle
+							e0 = co[1] - co[0]
+							e1 = co[2] - co[0]
+							nx = e0.y * e1.z - e0.z * e1.y
+							ny = e0.z * e1.x - e0.x * e1.z
+							nz = e0.x * e1.y - e0.y * e1.x
+							len_n = max(1e-12, math.sqrt(nx*nx + ny*ny + nz*nz))
+							nx, ny, nz = nx/len_n, ny/len_n, nz/len_n
+							# Slope test against Blender Z-up
+							dot_up = nx*up[0] + ny*up[1] + nz*up[2]
+							if dot_up < slope_cos:
+								continue
+							# Emit vertices and triangle
+							i0 = emit_vertex(co[0])
+							i1 = emit_vertex(co[1])
+							i2 = emit_vertex(co[2])
+							tris.extend([i0, i1, i2])
+					finally:
+						bm.free()
+					try:
+						if apply_mods:
+							ob_eval.to_mesh_clear()
+					except Exception:
+						pass
+					try:
+						if not apply_mods and o is not None and hasattr(o, "to_mesh_clear"):
+							o.to_mesh_clear()
+					except Exception:
+						pass
+				except Exception:
+					continue
+
+			if not verts or not tris:
+				self.report({"WARNING"}, "No walkable triangles produced with current settings")
+				return {"CANCELLED"}
+
+			os.makedirs(os.path.dirname(export_path), exist_ok=True)
+			payload = {
+				"vertices": verts,
+				"triangles": tris,
+				"meta": {
+					"propKey": prop_key,
+					"slopeMaxDeg": math.degrees(slope_max_rad) if slope_max_rad <= math.pi else slope_max_rad,
+					"convertAxes": bool(convert_axes),
+				}
+			}
+			with open(export_path, "w", encoding="utf-8") as f:
+				json.dump(payload, f, separators=(",", ":" ))
+			self.report({"INFO"}, f"NavMesh exported: {len(verts)} verts, {len(tris)//3} tris -> {export_path}")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to bake/export navmesh")
+			return {"CANCELLED"}
+
+
+class VIEW3D_PT_three64_navmesh(bpy.types.Panel):
+	bl_label = "Three64 NavMesh"
+	bl_idname = "VIEW3D_PT_three64_navmesh"
+	bl_space_type = "VIEW_3D"
+	bl_region_type = "UI"
+	bl_category = "NavMesh"
+	bl_options = {"DEFAULT_CLOSED"}
+
+	def draw(self, context: "bpy.types.Context"):
+		layout = self.layout
+		scene = context.scene
+		col = layout.column(align=True)
+		col.prop(scene, "three64_nav_prop_key")
+		col.prop(scene, "three64_nav_slope_max")
+		col.prop(scene, "three64_nav_convert_axes")
+		col.prop(scene, "three64_nav_apply_modifiers")
+		col.prop(scene, "three64_nav_export_path")
+		col.operator(THREE64_OT_bake_navmesh_json.bl_idname, icon="MESH_DATA")
+
 classes = (
 	THREE64_OT_reload_component_data,
 	Three64AddonPreferences,
 	OBJECT_PT_three64_component,
 	THREE64_OT_open_addon_preferences,
 	THREE64_OT_add_selected_component,
+	THREE64_OT_mark_navigable,
+	THREE64_OT_bake_navmesh_json,
+	VIEW3D_PT_three64_navmesh,
 )
 def register():
 	for cls in classes:
@@ -680,6 +876,39 @@ def register():
 		bpy.types.OBJECT_PT_custom_props.append(_draw_into_custom_props)
 	except Exception:
 		pass
+	# NavMesh bake settings on the Scene
+	try:
+		bpy.types.Scene.three64_nav_prop_key = bpy.props.StringProperty(
+			name="Filter Property",
+			description="Only include meshes with this custom property set truthy",
+			default="navigable",
+		)
+		bpy.types.Scene.three64_nav_slope_max = bpy.props.FloatProperty(
+			name="Max Slope (deg)",
+			description="Maximum surface slope to consider walkable (Blender Z-up)",
+			default=45.0,
+			min=0.0, max=89.9,
+			subtype='ANGLE',
+			unit='ROTATION',
+		)
+		bpy.types.Scene.three64_nav_export_path = bpy.props.StringProperty(
+			name="Export Path",
+			description="Target JSON path (supports // relative to .blend)",
+			subtype="FILE_PATH",
+			default="//navmesh.json",
+		)
+		bpy.types.Scene.three64_nav_convert_axes = bpy.props.BoolProperty(
+			name="Convert to Three.js (Y-up)",
+			description="Convert Blender coords (X,Y,Z) to Three.js (X,Y,Z) as (x, z, -y)",
+			default=True,
+		)
+		bpy.types.Scene.three64_nav_apply_modifiers = bpy.props.BoolProperty(
+			name="Apply Modifiers",
+			description="Use evaluated meshes with modifiers applied",
+			default=True,
+		)
+	except Exception:
+		pass
 
 
 def unregister():
@@ -697,6 +926,18 @@ def unregister():
 		del bpy.types.Object.three64_color_picker_target
 	except Exception:
 		pass
+	# Remove scene navmesh props
+	for pname in (
+		"three64_nav_prop_key",
+		"three64_nav_slope_max",
+		"three64_nav_export_path",
+		"three64_nav_convert_axes",
+		"three64_nav_apply_modifiers",
+	):
+		try:
+			delattr(bpy.types.Scene, pname)
+		except Exception:
+			pass
 	# Remove property
 	if hasattr(bpy.types.Object, "three64_component"):
 		try:

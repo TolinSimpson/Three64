@@ -8,6 +8,7 @@ import { loadJSON } from "./io.js";
 import LoadingScreen from "./loadingScreen.js";
 import { EventSystem } from "./eventSystem.js";
 import { Player } from "./player.js";
+import "./navmesh.js";
 export const config = {
   expansionPak: true,
   targetFPS: 30,
