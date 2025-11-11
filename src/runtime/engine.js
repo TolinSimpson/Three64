@@ -6,6 +6,8 @@ import { BudgetTracker, initDebugOverlay, Debug } from "./debug.js";
 import { Object3D } from "three";
 import { loadJSON } from "./io.js";
 import LoadingScreen from "./loadingScreen.js";
+import { EventSystem } from "./eventSystem.js";
+import { Player } from "./player.js";
 export const config = {
   expansionPak: true,
   targetFPS: 30,
@@ -91,29 +93,26 @@ export function createApp() {
   const rendererCore = new RendererCore(canvas);
   const budget = new BudgetTracker();
   const physics = new PhysicsWorld(rendererCore.scene, { enableGroundPlane: true, groundY: 0, debug: false });
-  const fps = new FPSController(canvas, rendererCore.camera);
-  fps.setPhysics(physics);
 
   const playerRig = new Object3D();
   playerRig.name = "PlayerRig";
   const cam = rendererCore.camera;
-  const eyeHeight = fps.eyeHeight;
+  const eyeHeight = 1.6;
   playerRig.position.set(cam.position.x, Math.max(0, cam.position.y - eyeHeight), cam.position.z);
   rendererCore.scene.add(playerRig);
   playerRig.add(cam);
   cam.position.set(0, eyeHeight, 0);
-  fps.setRig(playerRig);
 
   const updaters = [];
   app = {
     rendererCore,
     budget,
     physics,
-    fps,
     loading: new LoadingScreen(),
     profiler: Debug.profiler,
     errors: Debug.errors,
     toggles: Debug.toggles,
+    componentInstances: [],
     onUpdate(fn) { if (typeof fn === "function") updaters.push(fn); },
     setWireframe(enabled) {
       rendererCore.scene.traverse((o) => {
@@ -127,6 +126,41 @@ export function createApp() {
   };
   window.__game = app;
   initDebugOverlay(app);
+
+  // Input + Events
+  app.eventSystem = new EventSystem({ fixedTimestep: 1 / 60, dom: canvas });
+
+  // Create player component bound to the camera rig
+  const player = new Player({ game: app, object: playerRig, options: {}, propName: "Player" });
+  try { player.Initialize?.(); } catch (e) { console.error("Player.Initialize failed:", e); }
+  app.componentInstances.push(player);
+
+  // Phase dispatchers
+  const runPhase = (method, dt) => {
+    const list = app.componentInstances || [];
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      if (!c) continue;
+      const fn = c[method];
+      if (typeof fn === "function") {
+        try { fn.call(c, dt, app); } catch (e) { console.error(`${method} error:`, e); }
+      }
+    }
+  };
+  app.eventSystem.on('input', (dt) => {
+    // Poll gamepad via Input helper inside consumers; still run component phase
+    runPhase('Input', dt);
+  });
+  app.eventSystem.on('fixed', (dt) => {
+    runPhase('FixedUpdate', dt);
+  });
+  app.eventSystem.on('update', (dt) => {
+    runPhase('Update', dt);
+    app._runUpdaters(dt);
+  });
+  app.eventSystem.on('late', (dt) => {
+    runPhase('LateUpdate', dt);
+  });
 }
 
 function animate() {
@@ -136,8 +170,8 @@ function animate() {
     const cappedMs = Math.min(elapsedSinceStep, frameIntervalMs * 2);
     app.profiler.beginFrame();
     app.budget.resetFrame();
-    app.fps.update(cappedMs / 1000);
-    app._runUpdaters(cappedMs / 1000);
+    // Run event phases including fixed/update/late
+    app.eventSystem.tick(app, cappedMs / 1000);
     app.rendererCore.update(cappedMs / 1000);
     app.rendererCore.render();
     const tris = app.rendererCore.getTriangleCount();
@@ -171,14 +205,6 @@ export async function start() {
     canvas.height = height;
   }
   createApp();
-  // Update all component instances once per frame
-  app.onUpdate((dt) => {
-    const list = app.componentInstances || [];
-    for (let i = 0; i < list.length; i++) {
-      const c = list[i];
-      if (c && typeof c.Update === "function") c.Update(dt);
-    }
-  });
   const params = new URLSearchParams(window.location.search);
   const gltfUrlParam = params.get("gltf");
   const sceneParam = params.get("scene") || "showcase";
@@ -215,7 +241,6 @@ export async function start() {
         await loader.loadFromDefinition(def, baseUrlForDef);
         app.loading.setProgress(1);
         app.loading.hide();
-        positionPlayerFromMarkers();
         animate();
         return;
       }
@@ -235,7 +260,6 @@ export async function start() {
       await loader.loadFromDefinition(def, new URL('.', url).href);
       app.loading.setProgress(1);
       app.loading.hide();
-      positionPlayerFromMarkers();
     } catch (e) {
       console.error("Failed to load default GLTF scene:", e);
       app.errors.show(["Failed to load default scene"]);
@@ -258,7 +282,6 @@ export async function start() {
       await loader.loadFromDefinition(def, baseUrl);
       app.loading.setProgress(1);
       app.loading.hide();
-      positionPlayerFromMarkers();
     } catch (e) {
       console.error("Failed to load default GLTF scene:", e);
       app.errors.show(["Failed to load default scene"]);

@@ -8,6 +8,9 @@ export class Component {
   }
   // Components can override to expose default parameter presets for tooling/runtime
   static getDefaultParams() { return {}; }
+  // Components can override to describe their parameters for tooling/editors
+  // Each entry: { key, label, type, min, max, step, options, description }
+  static getParamDescriptions() { return []; }
   Initialize() {}
   Update(dt) {}
   Dispose() {}

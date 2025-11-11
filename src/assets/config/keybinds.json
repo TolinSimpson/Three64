@@ -1,0 +1,11 @@
+{
+  "moveLeft": ["KeyA", "ArrowLeft"],
+  "moveRight": ["KeyD", "ArrowRight"],
+  "moveForward": ["KeyW", "ArrowUp"],
+  "moveBackward": ["KeyS", "ArrowDown"],
+  "sprint": ["ShiftLeft", "ShiftRight"],
+  "crouch": ["ControlLeft", "ControlRight"],
+  "jump": ["Space"]
+}
+
+
