@@ -14,7 +14,7 @@ Install:
 npm install
 ```
 
-Build the runtime bundle (outputs `public/runtime.js`):
+Build the runtime bundle (outputs to `public/build/`):
 
 ```bash
 npm run build
@@ -24,13 +24,19 @@ Run a local server and open the app:
 
 ```bash
 npm run serve
-# then open http://localhost:5173/public/index.html
+# then open http://localhost:5173/
 ```
 
 Notes:
 
 - Source files live under `src/runtime`. The entrypoint is `src/runtime/main.js`.
-- The bundle is emitted to `public/runtime.js` and loaded by `public/index.html`.
+- Assets now live under `src/assets/`:
+  - Models (`.glb`) in `src/assets/models/`
+  - Textures in `src/assets/textures/`
+- Custom components for dynamic import live under `src/components/`
+- Scene scripts live under `src/scenes/`
+- The bundle and copied assets are emitted to `public/build/` and loaded by `public/index.html`.
+- Only assets referenced by scene scripts/runtime are copied into `public/build/assets/` (basic tree‑shaken copy).
 
 ## Summary
 
@@ -155,8 +161,8 @@ At runtime, each node with matching properties creates an instance and calls `In
 ## Default Scene and Scene Index
 
 - `public/config/scene-manifest.json` lists available scenes: `{ "id": "...", "module": "path/to/module.js" }`.
-- If the list is empty or invalid, the engine loads the built-in default scene:
-  - `src/runtime/default-assets/default-scene.js` which loads `default-scene.glb`.
+- Scene modules are copied from `src/scenes/` to `public/scenes/` at build time.
+- If the list is empty or invalid, the engine loads the built-in default scene and fetches assets from `public/build/assets/` (e.g., `models/default-scene.glb`). 
 
 ## Notes for Blender
 

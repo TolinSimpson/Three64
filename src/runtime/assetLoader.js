@@ -167,6 +167,11 @@ export class SceneLoader {
         this._processNamingConventions(root);
         // Instantiate components from userData
         this._instantiateFromUserData(root);
+        // If GLTF root carries scene-level mappings, instantiate them
+        const sceneMapping = this._extractSceneMappingFromRoot(root);
+        if (sceneMapping) {
+          await this._instantiateProperties({ mapping: sceneMapping, baseUrl });
+        }
         if (entry.physics && this.game.physics) {
           if (entry.physics.collider === "convex") {
             this.game.physics.addConvexColliderForObject(root, {
@@ -259,6 +264,11 @@ export class SceneLoader {
         this._processNamingConventions(root);
         // Instantiate components from userData
         this._instantiateFromUserData(root);
+        // Scene-level mappings on GLTF root
+        const sceneMapping = this._extractSceneMappingFromRoot(root);
+        if (sceneMapping) {
+          await this._instantiateProperties({ mapping: sceneMapping, baseUrl });
+        }
         if (entry.physics && this.game.physics) {
           if (entry.physics.collider === "convex") {
             this.game.physics.addConvexColliderForObject(root, {
@@ -494,6 +504,18 @@ export class SceneLoader {
     }
 
     return created;
+  }
+
+  _extractSceneMappingFromRoot(root) {
+    if (!root || !root.userData || typeof root.userData !== "object") return null;
+    const ud = root.userData || {};
+    // Preferred nested: scene: { properties | components | idScripts | idComponents }
+    const nested = ud.scene;
+    if (nested && typeof nested === "object") {
+      return nested.properties || nested.components || nested.idScripts || nested.idComponents || null;
+    }
+    // Fallback: allow top-level keys on root userData
+    return ud.properties || ud.components || ud.idScripts || ud.idComponents || null;
   }
 }
 

@@ -1,7 +1,4 @@
 node_modules/
 
-public/default-assets/
-public/runtime.js
-public/runtime.js.map
-public/runtime.js.LICENSE.txt
-public/vendor/
+public/build/
+src/runtime/_generated_modules.js

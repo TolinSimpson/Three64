@@ -42,26 +42,30 @@ export class ParticleSystem {
     this.mesh = new InstancedMesh(quadGeo, mat, this.maxParticles);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
 
-    // Load fallback atlas if none provided
+    // Load fallback atlas if none provided (dynamic import for asset URL)
     if (!this.atlas) {
-      const loader = new TextureLoader();
-      loader.load(
-        "default-assets/default-particle.png",
-        (tex) => {
-          tex.minFilter = NearestFilter;
-          tex.magFilter = NearestFilter;
-          tex.generateMipmaps = false;
-          this.atlas = tex;
-          if (this.mesh && this.mesh.material) {
-            this.mesh.material.map = tex;
-            this.mesh.material.needsUpdate = true;
-          }
-        },
-        undefined,
-        () => {
-          // keep placeholder on error
-        }
-      );
+      (async () => {
+        try {
+          const mod = await import('../assets/textures/default-particle.png');
+          const url = (mod && mod.default) || mod;
+          const loader = new TextureLoader();
+          loader.load(
+            url,
+            (tex) => {
+              tex.minFilter = NearestFilter;
+              tex.magFilter = NearestFilter;
+              tex.generateMipmaps = false;
+              this.atlas = tex;
+              if (this.mesh && this.mesh.material) {
+                this.mesh.material.map = tex;
+                this.mesh.material.needsUpdate = true;
+              }
+            },
+            undefined,
+            () => {}
+          );
+        } catch {}
+      })();
     }
   }
 

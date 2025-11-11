@@ -1,6 +1,7 @@
 'use strict';
 import { Vector2, Vector3, Euler } from "three";
 import { ComponentRegistry } from "./component.js";
+import { ensureAmmo, stepAmmo, ammoRaycast } from "./physics.js";
 
 export class FPSController {
   constructor(dom, camera, input = null, options = {}) {
@@ -35,8 +36,6 @@ export class FPSController {
     this.targetYaw = this.yaw;
     this.targetPitch = this.pitch;
     this.euler = new Euler(0, 0, 0, 'YXZ');
-    this.physics = null;
-
     dom.addEventListener('click', () => this.lock());
     document.addEventListener('pointerlockchange', () => {
       this.enabled = document.pointerLockElement === dom;
@@ -55,9 +54,6 @@ export class FPSController {
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
   }
 
-  setPhysics(physicsWorld) {
-    this.physics = physicsWorld || null;
-  }
 
   setRig(object3D) {
     this.rig = object3D || null;
@@ -71,6 +67,8 @@ export class FPSController {
   }
 
   update(dt) {
+    // Step Ammo world early; initialize lazily
+    ensureAmmo().then(() => stepAmmo(dt)).catch(() => {});
     // Smooth look with proper circular interpolation for yaw
     const lerp = (a, b, t) => a + (b - a) * t;
     const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -159,28 +157,7 @@ export class FPSController {
       this.velY = this.jumpSpeed;
       this.grounded = false;
     }
-    if (this.physics) {
-      this.physics.resolvePlayer(this, move, dt);
-    } else {
-      // Fallback: simple plane at y=0
-      // Semi-implicit Euler for stable gravity
-      this.velY -= this.gravity * dt;
-      this.position.y += this.velY * dt;
-      const GROUND_Y = 0;
-      const GROUND_EPS = 1e-4;
-      if (this.position.y < GROUND_Y - GROUND_EPS) {
-        // Prevent tunneling below ground, reflect back to plane
-        this.position.y = GROUND_Y;
-      }
-      if (this.position.y <= GROUND_Y + GROUND_EPS && this.velY <= 0) {
-        this.position.y = 0;
-        this.velY = 0;
-        this.grounded = true;
-      } else {
-        this.grounded = false;
-      }
-      this.position.add(move);
-    }
+    this._resolveKinematicWithAmmo(move, dt);
 
     // Sync rig (preferred) or camera fallback
     if (this.rig) {
@@ -193,6 +170,118 @@ export class FPSController {
       this.camera.position.x = this.position.x;
       this.camera.position.y = this.position.y + this.eyeHeight;
       this.camera.position.z = this.position.z;
+    }
+  }
+
+  _raycastWithGround(origin, direction, maxDistance = 100) {
+    const dir = direction.clone().normalize();
+    let closest = ammoRaycast(origin, dir, maxDistance);
+    // Ground plane y=0
+    if (Math.abs(dir.y) > 1e-5) {
+      const t = (0 - origin.y) / dir.y;
+      if (t >= 0 && t <= maxDistance) {
+        const p = origin.clone().addScaledVector(dir, t);
+        const groundHit = {
+          distance: t,
+          point: p,
+          face: { normal: new Vector3(0, 1, 0) },
+          object: null,
+        };
+        if (!closest || groundHit.distance < closest.distance) closest = groundHit;
+      }
+    }
+    return closest || null;
+  }
+
+  _resolveKinematicWithAmmo(desiredMove, dt) {
+    const up = new Vector3(0, 1, 0);
+    const pos = this.position;
+    const eyeHeight = this.eyeHeight || 1.6;
+    const radius = 0.4;
+    const stepSnap = 0.3;
+    const EPS = 1e-4;
+
+    // Vertical integrate gravity
+    this.velY -= (this.gravity ?? 9.8) * dt;
+
+    // Ground detection from head
+    const head = pos.clone().addScaledVector(up, eyeHeight);
+    const downHit = this._raycastWithGround(head, new Vector3(0, -1, 0), eyeHeight + 10);
+    let groundY = null;
+    if (downHit) groundY = downHit.point.y;
+
+    // Predict vertical motion
+    let newY = pos.y + this.velY * dt;
+    let grounded = false;
+    if (groundY !== null) {
+      const feetToGround = Math.max(0, pos.y - groundY);
+      const nearGround = feetToGround <= stepSnap + 1e-3;
+      const falling = this.velY <= 0;
+      if (nearGround && falling && head.y >= groundY) {
+        newY = groundY;
+        this.velY = 0;
+        grounded = true;
+      }
+    }
+    pos.y = newY;
+    this.grounded = grounded;
+
+    // Capsule sample heights
+    const sampleHeights = [Math.min(radius + 0.02, eyeHeight * 0.33), Math.min(eyeHeight * 0.5, 0.9), Math.max(eyeHeight - radius - 0.02, eyeHeight * 0.7)];
+    const capsuleRaycast = (originBase, dir, dist) => {
+      let best = null;
+      for (let i = 0; i < sampleHeights.length; i++) {
+        const o = originBase.clone().addScaledVector(up, sampleHeights[i]);
+        const h = this._raycastWithGround(o, dir, dist);
+        if (!h) continue;
+        if (!best || h.distance < best.distance) best = h;
+      }
+      return best;
+    };
+
+    // Substep horizontal slide
+    let remainingLen = desiredMove.length();
+    if (remainingLen > EPS) {
+      let dir = desiredMove.clone().multiplyScalar(1 / remainingLen);
+      const maxStep = 0.25;
+      let subRemaining = remainingLen;
+      const originBase = pos.clone();
+      while (subRemaining > EPS) {
+        const stepLen = Math.min(maxStep, subRemaining);
+        let stepRemaining = stepLen;
+        let iterations = 0;
+        while (stepRemaining > EPS && iterations < 3) {
+          iterations++;
+          const hit = capsuleRaycast(originBase, dir, stepRemaining + radius);
+          if (hit && hit.distance < stepRemaining + radius - EPS) {
+            const n = hit.face?.normal?.clone?.() || new Vector3(0, 1, 0);
+            const forwardAllowed = Math.max(0, hit.distance - radius);
+            if (forwardAllowed > EPS) {
+              pos.addScaledVector(dir, forwardAllowed);
+            }
+            const consumed = forwardAllowed;
+            stepRemaining -= consumed;
+            subRemaining -= consumed;
+            if (stepRemaining > EPS) {
+              if (dir.dot(n) > 0) n.multiplyScalar(-1);
+              const slideDir = dir.clone().addScaledVector(n, -dir.dot(n));
+              const sLen = slideDir.length();
+              if (sLen > EPS) dir.copy(slideDir.multiplyScalar(1 / sLen)); else break;
+            }
+          } else {
+            pos.addScaledVector(dir, stepRemaining);
+            subRemaining -= stepRemaining;
+            stepRemaining = 0;
+          }
+        }
+        originBase.copy(pos);
+      }
+    }
+
+    // Ceiling
+    if (this.velY > 0) {
+      const upHit = this._raycastWithGround(head, up, this.velY * dt + 0.1);
+      if (upHit) this.velY = 0;
     }
   }
 }

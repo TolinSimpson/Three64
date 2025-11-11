@@ -1,6 +1,7 @@
 'use strict';
 import { Group, Raycaster, Vector3, MeshBasicMaterial, Mesh } from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
+import AmmoFactory from "ammo.js";
 
 // Minimal physics: static convex colliders, simple raycasts, gravity, and slide.
 export class PhysicsWorld {
@@ -15,7 +16,7 @@ export class PhysicsWorld {
     this.raycaster = new Raycaster();
     this.raycaster.firstHitOnly = true;
 
-    // Optional infinite ground plane at y=0 (classic N64 simple ground)
+    // Optional infinite ground plane at y=0
     this.groundY = options.groundY ?? 0;
     this.enableGroundPlane = options.enableGroundPlane !== false;
     // Ammo.js world (lazy loaded)
@@ -215,30 +216,9 @@ export class PhysicsWorld {
 
   async _initAmmo(options) {
     try {
-      let factory = null;
-      if (typeof window !== "undefined" && typeof window.Ammo !== "undefined") {
-        factory = window.Ammo;
-      } else {
-        // Prefer locally-copied asm.js build first (most commonly present), then wasm, then CDN
-        const localJs = new URL('vendor/ammo/ammo.js', document.baseURI).href;
-        const localWasm = new URL('vendor/ammo/ammo.wasm.js', document.baseURI).href;
-        let ok = false;
-        try { await loadScript(localJs); ok = true; } catch {}
-        if (!ok) { try { await loadScript(localWasm); ok = true; } catch {} }
-        if (!ok) {
-          // CDN fallbacks
-          const cdnJs = 'https://cdn.jsdelivr.net/npm/ammo.js@0.0.10/builds/ammo.js';
-          const cdnWasm = 'https://cdn.jsdelivr.net/npm/ammo.js@0.0.10/builds/ammo.wasm.js';
-          const unpkgJs = 'https://unpkg.com/ammo.js@0.0.10/builds/ammo.js';
-          const unpkgWasm = 'https://unpkg.com/ammo.js@0.0.10/builds/ammo.wasm.js';
-          try { await loadScript(cdnJs); ok = true; } catch {}
-          if (!ok) { try { await loadScript(cdnWasm); ok = true; } catch {} }
-          if (!ok) { try { await loadScript(unpkgJs); ok = true; } catch {} }
-          if (!ok) { await loadScript(unpkgWasm); ok = true; }
-        }
-        factory = window.Ammo;
-      }
-      const Ammo = await (typeof factory === "function" ? factory() : factory);
+      // Dynamic import for code-splitting
+      const { default: Factory } = await import('ammo.js');
+      const Ammo = await Factory();
       this.Ammo = Ammo;
       const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
       const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
@@ -305,13 +285,91 @@ export class PhysicsWorld {
   }
 }
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = src;
-    s.async = true;
-    s.onload = () => resolve();
-    s.onerror = (e) => reject(e);
-    document.head.appendChild(s);
-  });
+// --------------------------
+// Module-level Ammo singleton
+// --------------------------
+let __ammoReady = false;
+let __Ammo = null;
+let __dynamicsWorld = null;
+let __subsystems = null;
+
+export async function ensureAmmo(options = {}) {
+  if (__ammoReady && __dynamicsWorld) return { Ammo: __Ammo, world: __dynamicsWorld };
+  try {
+    const { default: Factory } = await import('ammo.js');
+    const Ammo = await Factory();
+    __Ammo = Ammo;
+    const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
+    const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
+    const broadphase = new Ammo.btDbvtBroadphase();
+    const solver = new Ammo.btSequentialImpulseConstraintSolver();
+    const world = new Ammo.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfiguration);
+    const g = options && typeof options.gravity === "number" ? options.gravity : 9.8;
+    world.setGravity(new Ammo.btVector3(0, -g, 0));
+    __subsystems = { collisionConfiguration, dispatcher, broadphase, solver };
+    __dynamicsWorld = world;
+    __ammoReady = true;
+    return { Ammo: __Ammo, world: __dynamicsWorld };
+  } catch (e) {
+    console.warn("Ammo.js initialization failed (module singleton).", e);
+    __ammoReady = false;
+    return { Ammo: null, world: null };
+  }
+}
+
+export function stepAmmo(dt) {
+  if (__ammoReady && __dynamicsWorld) {
+    const maxSubSteps = 2;
+    const fixedTimeStep = 1 / 60;
+    __dynamicsWorld.stepSimulation(dt, maxSubSteps, fixedTimeStep);
+  }
+}
+
+export async function addStaticConvex(points) {
+  await ensureAmmo();
+  if (!__ammoReady || !__dynamicsWorld || !__Ammo) return null;
+  const Ammo = __Ammo;
+  const shape = new Ammo.btConvexHullShape();
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const v = new Ammo.btVector3(p.x, p.y, p.z);
+    shape.addPoint(v, true);
+  }
+  if (shape.optimizeConvexHull) shape.optimizeConvexHull();
+  if (shape.initializePolyhedralFeatures) shape.initializePolyhedralFeatures();
+  const transform = new Ammo.btTransform();
+  transform.setIdentity();
+  transform.setOrigin(new Ammo.btVector3(0, 0, 0));
+  const motionState = new Ammo.btDefaultMotionState(transform);
+  const mass = 0;
+  const localInertia = new Ammo.btVector3(0, 0, 0);
+  const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
+  const body = new Ammo.btRigidBody(rbInfo);
+  __dynamicsWorld.addRigidBody(body);
+  return body;
+}
+
+export function ammoRaycast(origin, direction, maxDistance) {
+  if (!__ammoReady || !__dynamicsWorld || !__Ammo) return null;
+  const Ammo = __Ammo;
+  try {
+    const dir = direction.clone().normalize();
+    const from = new Ammo.btVector3(origin.x, origin.y, origin.z);
+    const toP = origin.clone().addScaledVector(dir, maxDistance);
+    const to = new Ammo.btVector3(toP.x, toP.y, toP.z);
+    const cb = new Ammo.ClosestRayResultCallback(from, to);
+    __dynamicsWorld.rayTest(from, to, cb);
+    if (cb.hasHit && cb.hasHit()) {
+      const hp = cb.get_m_hitPointWorld();
+      const hn = cb.get_m_hitNormalWorld();
+      const point = new Vector3(hp.x(), hp.y(), hp.z());
+      const normal = new Vector3(hn.x(), hn.y(), hn.z()).normalize();
+      const frac = cb.get_m_closestHitFraction ? cb.get_m_closestHitFraction() : origin.distanceTo(point) / maxDistance;
+      const distance = Math.max(0, Math.min(maxDistance, maxDistance * frac));
+      return { distance, point, face: { normal }, object: null };
+    }
+    return null;
+  } catch (_e) {
+    return null;
+  }
 }
