@@ -17,6 +17,8 @@ export const config = {
     internalHeightBase: 240,
     internalWidthExpansion: 640,
     internalHeightExpansion: 480,
+    // If true, force all imported materials to render double-sided by default
+    defaultDoubleSided: false,
   },
   budgets: {
     trisPerFrame: 5333,
@@ -123,6 +125,8 @@ export function createApp() {
         }
       });
     },
+    // Delegate global render toggles to the renderer
+    setDoubleSided(enabled) { rendererCore.setDoubleSided?.(enabled); },
     _runUpdaters(dt) { for (let i = 0; i < updaters.length; i++) updaters[i](dt, app); }
   };
   window.__game = app;

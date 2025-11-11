@@ -9,9 +9,10 @@ import {
   Vector3,
   DirectionalLight,
   AmbientLight,
+  DoubleSide,
 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { fitsInTMEM} from "./engine.js";
+import { fitsInTMEM, config } from "./engine.js";
 import { BudgetTracker } from "./debug.js";
 import { ComponentRegistry } from "./component.js";
 import { loadJSON } from "./io.js";
@@ -27,7 +28,7 @@ export class GLTFAssetLoader {
     this.budget = budgetTracker;
   }
 
-  async load(url, onProgress = undefined) {
+  async load(url, onProgress = undefined, options = undefined) {
     const gltf = await this._loadAsync(url, onProgress);
 
     const root = gltf.scene || gltf.scenes?.[0];
@@ -49,7 +50,7 @@ export class GLTFAssetLoader {
           stats.bonesMax = Math.max(stats.bonesMax, boneCount);
         }
 
-        const patched = this._patchMaterial(obj.material);
+        const patched = this._patchMaterial(obj.material, options);
         obj.material = patched;
         stats.materials += Array.isArray(patched) ? patched.length : 1;
 
@@ -92,16 +93,29 @@ export class GLTFAssetLoader {
     return { tilesUsed, texturesCount };
   }
 
-  _patchMaterial(material) {
+  _patchMaterial(material, options) {
     const mats = Array.isArray(material) ? material : [material];
     const patched = mats.map((m) => {
       if (!m) return m;
+      // Determine desired side:
+      // - Respect explicit caller override if provided (true => DoubleSide; false => default/front)
+      // - Otherwise, preserve original material side if it was DoubleSide
+      // - Otherwise, use renderer default from config if enabled
+      let makeDoubleSided = undefined;
+      if (options && Object.prototype.hasOwnProperty.call(options, "doubleSided")) {
+        makeDoubleSided = options.doubleSided === true;
+      } else if (m.side === DoubleSide) {
+        makeDoubleSided = true;
+      } else if (config?.renderer?.defaultDoubleSided) {
+        makeDoubleSided = true;
+      }
       const params = {
         color: m.color?.clone?.() || new Color(0xffffff),
         map: m.map || null,
         fog: true,
         transparent: m.transparent === true,
       };
+      if (makeDoubleSided === true) params.side = DoubleSide;
       const newMat = m.map ? new MeshBasicMaterial(params) : new MeshLambertMaterial(params);
       return newMat;
     });
@@ -153,6 +167,8 @@ export class SceneLoader {
             const frac = Math.max(0, Math.min(1, ev.loaded / ev.total));
             this._reportProgress(fileIdx, frac, totalFiles, entry.url);
           }
+        }, {
+          doubleSided: (entry.doubleSided ?? entry.materials?.doubleSided ?? config?.renderer?.defaultDoubleSided) === true
         });
         this._reportProgress(fileIdx, 1, totalFiles, entry.url);
         fileIdx += 1;
@@ -251,6 +267,8 @@ export class SceneLoader {
             const frac = Math.max(0, Math.min(1, ev.loaded / ev.total));
             this._reportProgress(fileIdx, frac, totalFiles, entry.url);
           }
+        }, {
+          doubleSided: (entry.doubleSided ?? entry.materials?.doubleSided ?? config?.renderer?.defaultDoubleSided) === true
         });
         this._reportProgress(fileIdx, 1, totalFiles, entry.url);
         fileIdx += 1;

@@ -6,8 +6,6 @@ import {
   Scene,
   Color,
   PerspectiveCamera,
-  BoxGeometry,
-  MeshBasicMaterial,
   Mesh,
   WebGLRenderTarget,
   NearestFilter,
@@ -16,6 +14,7 @@ import {
   PlaneGeometry,
   ShaderMaterial,
   OrthographicCamera,
+  DoubleSide,
 } from "three";
 
 export class RendererCore {
@@ -32,11 +31,6 @@ export class RendererCore {
     this.camera = new PerspectiveCamera(60, aspect, 0.1, 1000);
     this.camera.position.set(0, 0, 3);
 
-    const geo = new BoxGeometry(1, 1, 1);
-    const mat = new MeshBasicMaterial({ color: 0x22cc88, wireframe: true });
-    this.cube = new Mesh(geo, mat);
-    this.scene.add(this.cube);
-
     // Render targets and post-process
     const rtParams = { minFilter: NearestFilter, magFilter: NearestFilter, format: RGBAFormat }; 
     this.colorTarget = new WebGLRenderTarget(width, height, rtParams);
@@ -44,13 +38,32 @@ export class RendererCore {
   }
 
   getTriangleCount() {
-    // Box: 12 triangles
-    return 12;
+    let total = 0;
+    this.scene.traverse((o) => {
+      if (o && o.isMesh && o.geometry) {
+        const geo = o.geometry;
+        const index = geo.getIndex && geo.getIndex();
+        const triCount = index ? index.count / 3 : (geo.attributes?.position?.count || 0) / 3;
+        if (triCount && isFinite(triCount)) total += triCount | 0;
+      }
+    });
+    return total;
   }
 
   update(dtSeconds) {
-    this.cube.rotation.x += 0.5 * dtSeconds;
-    this.cube.rotation.y += 0.7 * dtSeconds;
+    // Intentionally empty; updates occur in components/systems elsewhere
+  }
+
+  setDoubleSided(enabled) {
+    this.scene.traverse((o) => {
+      if (o.isMesh && o.material) {
+        if (Array.isArray(o.material)) {
+          o.material.forEach((m) => { if (m && m.isMaterial) m.side = enabled ? DoubleSide : m.side; });
+        } else if (o.material.isMaterial) {
+          o.material.side = enabled ? DoubleSide : o.material.side;
+        }
+      }
+    });
   }
 
   render() {
