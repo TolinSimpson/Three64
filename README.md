@@ -27,9 +27,21 @@ npm run serve
 # then open http://localhost:5173/
 ```
 
+Live reload during development (no pre-build required):
+
+```bash
+npm run dev
+# serves http://localhost:5173 with live reload
+```
+
+- This runs the bundler in watch mode and a static server with live reload.
+- Changes under `src/runtime`, `src/assets/models`, `src/assets/textures`, and `src/blender/component-data` trigger incremental rebuilds and refresh the browser.
+- In development, the entire `src/assets/models` and `src/assets/textures` folders are copied so new/changed files appear immediately. Production builds still tree‑shake assets.
+- Stop with Ctrl+C. For a production-like run, use `npm run build && npm run serve`.
+
 Notes:
 
-- Source files live under `src/runtime`. The entrypoint is `src/runtime/main.js`.
+- Source files live under `src/runtime`. The entrypoint is `src/runtime/engine.js`.
 - Assets now live under `src/assets/`:
   - Models (`.glb`) in `src/assets/models/`
   - Textures in `src/assets/textures/`
