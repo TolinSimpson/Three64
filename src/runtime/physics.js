@@ -216,9 +216,24 @@ export class PhysicsWorld {
 
   async _initAmmo(options) {
     try {
-      // Dynamic import for code-splitting
-      const { default: Factory } = await import('ammo.js');
-      const Ammo = await Factory();
+      // Dynamic import for code-splitting with robust handling of different module shapes
+      let Ammo = null;
+      try {
+        const mod = await import('ammo.js');
+        const MaybeFactory = (mod && (mod.default ?? mod)) || null;
+        if (typeof MaybeFactory === "function") {
+          Ammo = await MaybeFactory();
+        } else if (MaybeFactory && typeof MaybeFactory.then === "function") {
+          Ammo = await MaybeFactory;
+        }
+      } catch {}
+      // Fallback to static import form if available
+      if (!Ammo && typeof AmmoFactory === "function") {
+        Ammo = await AmmoFactory();
+      } else if (!Ammo && AmmoFactory && typeof AmmoFactory.then === "function") {
+        Ammo = await AmmoFactory;
+      }
+      if (!Ammo) throw new Error("Ammo module could not be initialized");
       this.Ammo = Ammo;
       const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
       const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
@@ -296,8 +311,22 @@ let __subsystems = null;
 export async function ensureAmmo(options = {}) {
   if (__ammoReady && __dynamicsWorld) return { Ammo: __Ammo, world: __dynamicsWorld };
   try {
-    const { default: Factory } = await import('ammo.js');
-    const Ammo = await Factory();
+    let Ammo = null;
+    try {
+      const mod = await import('ammo.js');
+      const MaybeFactory = (mod && (mod.default ?? mod)) || null;
+      if (typeof MaybeFactory === "function") {
+        Ammo = await MaybeFactory();
+      } else if (MaybeFactory && typeof MaybeFactory.then === "function") {
+        Ammo = await MaybeFactory;
+      }
+    } catch {}
+    if (!Ammo && typeof AmmoFactory === "function") {
+      Ammo = await AmmoFactory();
+    } else if (!Ammo && AmmoFactory && typeof AmmoFactory.then === "function") {
+      Ammo = await AmmoFactory;
+    }
+    if (!Ammo) throw new Error("Ammo module could not be initialized");
     __Ammo = Ammo;
     const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
     const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
