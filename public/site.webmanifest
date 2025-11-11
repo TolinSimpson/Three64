@@ -1,0 +1,18 @@
+{
+  "name": "Three64",
+  "short_name": "Three64",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "theme_color": "#0d0f1a",
+  "background_color": "#0d0f1a",
+  "display": "standalone",
+  "start_url": "/"
+}
+
+
