@@ -5,9 +5,6 @@ import { SceneLoader } from "./assetLoader.js";
 import { BudgetTracker, initDebugOverlay, Debug } from "./debug.js";
 import { Object3D } from "three";
 import { loadJSON } from "./io.js";
-// Register built-in components
-import "./collider.js";
-import { FPSController } from "./fpsController.js";
 import LoadingScreen from "./loadingScreen.js";
 export const config = {
   expansionPak: true,
@@ -269,43 +266,6 @@ export async function start() {
     }
   }
   animate();
-}
-
-export function positionPlayerFromMarkers() {
-  // Prefer explicit P1_spawn, then any P1_*; fallback to ID0_showcase as anchor
-  const markers = app.sceneMarkers || {};
-  let target = null;
-  let yaw = null;
-  let pitch = null;
-  if (markers.P1_spawn) target = markers.P1_spawn.position;
-  if (markers.P1_spawn?.yaw !== undefined) yaw = markers.P1_spawn.yaw;
-  if (markers.P1_spawn?.pitch !== undefined) pitch = markers.P1_spawn.pitch;
-  if (!target) {
-    const p1keys = Object.keys(markers).filter(k => k.startsWith("P1_"));
-    if (p1keys.length) {
-      target = markers[p1keys[0]].position;
-      if (markers[p1keys[0]].yaw !== undefined) yaw = markers[p1keys[0]].yaw;
-      if (markers[p1keys[0]].pitch !== undefined) pitch = markers[p1keys[0]].pitch;
-    }
-  }
-  if (!target && markers.ID0_showcase) target = markers.ID0_showcase.position;
-  if (!target) return;
-  const rig = app.rendererCore.camera.parent; // playerRig holds camera as child
-  if (rig) {
-    rig.position.set(target.x, Math.max(0, target.y), target.z);
-  }
-  // Sync FPS controller internal state and facing
-  if (app.fps) {
-    app.fps.position.set(target.x, Math.max(0, target.y), target.z);
-    if (typeof yaw === "number") {
-      app.fps.yaw = yaw;
-      app.fps.targetYaw = yaw;
-    }
-    if (typeof pitch === "number") {
-      app.fps.pitch = pitch;
-      app.fps.targetPitch = pitch;
-    }
-  }
 }
 
 // Auto-start when bundled for the browser (single run guard)

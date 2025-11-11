@@ -1,0 +1,10 @@
+{
+  "components": [
+    {
+      "path": "fpsController.js"
+    },
+    {
+      "path": "scene.js"
+    }
+  ]
+}

@@ -166,7 +166,7 @@ export class SceneLoader {
         // Naming convention processing (LOD, COL_, etc.)
         this._processNamingConventions(root);
         // Instantiate components from userData
-        this._instantiateFromUserData(root);
+        await this._instantiateFromUserData(root, baseUrl);
         // If GLTF root carries scene-level mappings, instantiate them
         const sceneMapping = this._extractSceneMappingFromRoot(root);
         if (sceneMapping) {
@@ -263,7 +263,7 @@ export class SceneLoader {
         } catch {}
         this._processNamingConventions(root);
         // Instantiate components from userData
-        this._instantiateFromUserData(root);
+        await this._instantiateFromUserData(root, baseUrl);
         // Scene-level mappings on GLTF root
         const sceneMapping = this._extractSceneMappingFromRoot(root);
         if (sceneMapping) {
@@ -304,36 +304,80 @@ export class SceneLoader {
     return { objects: added, manifest, scripts: loadedScripts };
   }
 
-  _instantiateFromUserData(root) {
+  async _instantiateFromUserData(root, baseUrl) {
     if (!root) return;
+    this._componentPresetCache = this._componentPresetCache || new Map();
+    const normalize = (s) => String(s || "").replace(/[\s\-_]/g, "").toLowerCase();
+    const mergeDeep = (target, source) => {
+      if (!source || typeof source !== "object") return target;
+      const out = Array.isArray(target) ? target.slice() : { ...(target || {}) };
+      for (const [k, v] of Object.entries(source)) {
+        if (v && typeof v === "object" && !Array.isArray(v)) {
+          out[k] = mergeDeep(out[k] && typeof out[k] === "object" ? out[k] : {}, v);
+        } else {
+          out[k] = v;
+        }
+      }
+      return out;
+    };
+    const getDefaultsForType = async (type) => {
+      const key = normalize(type);
+      if (this._componentPresetCache.has(key)) return this._componentPresetCache.get(key);
+      let defaults = {};
+      const C = ComponentRegistry.get(type);
+      try {
+        if (C && typeof C.getDefaultParams === "function") {
+          const d = C.getDefaultParams();
+          if (d && typeof d === "object") defaults = d;
+        } else if (C && C.defaultParams && typeof C.defaultParams === "object") {
+          defaults = C.defaultParams;
+        }
+      } catch {}
+      // Fallback: try loading generated preset JSON
+      if (!defaults || typeof defaults !== "object" || Object.keys(defaults).length === 0) {
+        try {
+          const urlBase = baseUrl || new URL("build/assets/", document.baseURI).href;
+          const presetUrl = new URL(`component-data/${key}.json`, urlBase).toString();
+          const preset = await loadJSON(presetUrl);
+          const params = preset?.params;
+          if (params && typeof params === "object") defaults = params;
+        } catch {}
+      }
+      this._componentPresetCache.set(key, defaults || {});
+      return defaults || {};
+    };
+    const queue = [];
     root.traverse((obj) => {
       const defs = this._extractComponentsFromUserData(obj.userData || {});
       if (!defs || !defs.length) return;
-      for (const def of defs) {
-        const C = ComponentRegistry.get(def.type);
-        if (!C) { console.warn("Unknown component:", def.type, "on", obj.name); continue; }
-        let instance = null;
-        try {
-          instance = new C({ game: this.game, object: obj, options: def.params, propName: def.type });
-        } catch (e) {
-          try {
-            instance = C?.({ game: this.game, object: obj, options: def.params, propName: def.type });
-          } catch (e2) {
-            console.warn("Failed to create component instance:", def.type, e2);
-          }
-        }
-        if (!instance) continue;
-        try {
-          if (typeof instance.Initialize === "function") instance.Initialize(this.game, obj, def.params);
-        } catch (e) {
-          console.warn("Component Initialize() threw:", def.type, e);
-        }
-        instance.__typeName = def.type;
-        obj.__components = obj.__components || [];
-        obj.__components.push(instance);
-        this.game.componentInstances.push(instance);
-      }
+      for (const def of defs) queue.push({ obj, def });
     });
+    for (const { obj, def } of queue) {
+      const C = ComponentRegistry.get(def.type);
+      if (!C) { console.warn("Unknown component:", def.type, "on", obj.name); continue; }
+      const defaults = await getDefaultsForType(def.type);
+      const merged = mergeDeep(defaults || {}, def.params || {});
+      let instance = null;
+      try {
+        instance = new C({ game: this.game, object: obj, options: merged, propName: def.type });
+      } catch (e) {
+        try {
+          instance = C?.({ game: this.game, object: obj, options: merged, propName: def.type });
+        } catch (e2) {
+          console.warn("Failed to create component instance:", def.type, e2);
+        }
+      }
+      if (!instance) continue;
+      try {
+        if (typeof instance.Initialize === "function") instance.Initialize(this.game, obj, merged);
+      } catch (e) {
+        console.warn("Component Initialize() threw:", def.type, e);
+      }
+      instance.__typeName = def.type;
+      obj.__components = obj.__components || [];
+      obj.__components.push(instance);
+      this.game.componentInstances.push(instance);
+    }
   }
 
   _extractComponentsFromUserData(ud) {

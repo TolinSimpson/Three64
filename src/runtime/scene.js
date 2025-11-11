@@ -7,6 +7,32 @@ import { DirectionalLight, AmbientLight } from "three";
 import { createSkybox } from "./skybox.js";
 
 export class Scene extends Component {
+  static getDefaultParams() {
+    return {
+      lighting: {
+        directional: {
+          enabled: true,
+          color: 0xffffff,
+          intensity: 0.8,
+          position: [1, 1, 1],
+        },
+        ambient: {
+          enabled: true,
+          color: 0x404040,
+          intensity: 0.5,
+        },
+      },
+      skybox: {
+        enabled: true,
+        size: 200,
+        topColor: 0x6fb6ff,
+        bottomColor: 0xded7b0,
+        offset: 0.0,
+        exponent: 0.6,
+        followCamera: true,
+      },
+    };
+  }
   constructor(appOrCtx) {
     // Support two construction modes:
     // 1) Legacy wrapper mode: new Scene(app)
@@ -21,6 +47,11 @@ export class Scene extends Component {
       this.app = appOrCtx;
       this._wireToApp(this.app);
     }
+  }
+
+  static getDefaultParams() {
+    // Extend with scene component authoring defaults as needed
+    return {};
   }
 
   _wireToApp(app) {
@@ -61,14 +92,34 @@ export class Scene extends Component {
     // Include default scene initialization
     const { scene, camera } = this.rendererCore || {};
     if (scene && camera) {
-      const light = new DirectionalLight(0xffffff, 0.8);
-      light.position.set(1, 1, 1);
-      scene.add(light);
-      scene.add(new AmbientLight(0x404040, 0.5));
+      const opts = this.options || {};
+      const lighting = opts.lighting || {};
+      const dir = lighting.directional || {};
+      const amb = lighting.ambient || {};
+      if (dir.enabled !== false) {
+        const d = new DirectionalLight(dir.color ?? 0xffffff, dir.intensity ?? 0.8);
+        const p = Array.isArray(dir.position) && dir.position.length === 3 ? dir.position : [1, 1, 1];
+        d.position.set(p[0], p[1], p[2]);
+        scene.add(d);
+      }
+      if (amb.enabled !== false) {
+        scene.add(new AmbientLight(amb.color ?? 0x404040, amb.intensity ?? 0.5));
+      }
 
-      const sky = createSkybox(camera);
-      scene.add(sky);
-      this.onUpdate?.(() => sky.position.copy(camera.position));
+      const skyOpts = opts.skybox || {};
+      if (skyOpts.enabled !== false) {
+        const sky = createSkybox(camera, {
+          size: skyOpts.size,
+          topColor: skyOpts.topColor,
+          bottomColor: skyOpts.bottomColor,
+          offset: skyOpts.offset,
+          exponent: skyOpts.exponent,
+        });
+        scene.add(sky);
+        if (skyOpts.followCamera !== false) {
+          this.onUpdate?.(() => sky.position.copy(camera.position));
+        }
+      }
     }
   }
 }

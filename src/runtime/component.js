@@ -6,6 +6,8 @@ export class Component {
     this.options = options;
     this.propName = propName;
   }
+  // Components can override to expose default parameter presets for tooling/runtime
+  static getDefaultParams() { return {}; }
   Initialize() {}
   Update(dt) {}
   Dispose() {}

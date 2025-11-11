@@ -8,9 +8,71 @@ import webpack from 'webpack';
 import CopyWebpackPlugin from 'copy-webpack-plugin';
 import fs from 'fs';
 import url from 'url';
+import { ComponentRegistry } from './runtime/component.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+async function generateComponentPresets() {
+  const projectRoot = path.resolve(__dirname, '..');
+  const runtimeDir = path.resolve(projectRoot, 'src/runtime');
+  const outputDir = path.resolve(projectRoot, 'src/blender/component-data');
+  try { fs.mkdirSync(outputDir, { recursive: true }); } catch {}
+
+  // Find files that register components
+  const filesToImport = [];
+  const walk = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir)) {
+      const p = path.join(dir, entry);
+      const st = fs.statSync(p);
+      if (st.isDirectory()) { walk(p); continue; }
+      if (!st.isFile() || !p.endsWith('.js')) continue;
+      try {
+        const src = fs.readFileSync(p, 'utf-8');
+        if (src.includes('ComponentRegistry.register(')) {
+          filesToImport.push(p);
+        }
+      } catch {}
+    }
+  };
+  walk(runtimeDir);
+
+  // Import modules to trigger registration side-effects
+  for (const f of filesToImport) {
+    try {
+      await import(url.pathToFileURL(f).href);
+    } catch {}
+  }
+
+  // Build presets from registry
+  const normalize = (s) => String(s || "").replace(/[\s\-_]/g, "").toLowerCase();
+  const names = ComponentRegistry.list();
+  /** @type {Map<string, {display:string, ctor:any}>} */
+  const byCanon = new Map();
+  for (const name of names) {
+    const canon = normalize(name);
+    if (byCanon.has(canon)) continue;
+    const ctor = ComponentRegistry.get(name);
+    byCanon.set(canon, { display: name, ctor });
+  }
+  for (const [canon, { display, ctor }] of byCanon.entries()) {
+    let params = {};
+    try {
+      if (ctor && typeof ctor.getDefaultParams === 'function') {
+        const d = ctor.getDefaultParams();
+        if (d && typeof d === 'object') params = d;
+      } else if (ctor && ctor.defaultParams && typeof ctor.defaultParams === 'object') {
+        params = ctor.defaultParams;
+      }
+    } catch {}
+    const out = { type: display, params: params || {} };
+    const outPath = path.join(outputDir, `${canon}.json`);
+    try {
+      fs.writeFileSync(outPath, JSON.stringify(out, null, 2), 'utf-8');
+    } catch {}
+  }
+}
 
 function collectAssetFiles() {
   const projectRoot = path.resolve(__dirname, '..');
@@ -140,6 +202,12 @@ const config = {
           to: path.resolve(__dirname, '../public/build/assets/config'),
           noErrorOnMissing: true,
         },
+        // Component presets for Blender/tooling and runtime fallback
+        {
+          from: path.resolve(__dirname, '../src/blender/component-data'),
+          to: path.resolve(__dirname, '../public/build/assets/component-data'),
+          noErrorOnMissing: true,
+        },
         // Ammo.js is bundled into runtime.js; no vendor copy needed
       ],
     }),
@@ -148,7 +216,9 @@ const config = {
   stats: 'minimal',
 };
 
-function run() {
+async function run() {
+  // Generate component preset JSONs prior to bundling
+  await generateComponentPresets().catch(() => {});
   const compiler = webpack(config);
   compiler.run((err, stats) => {
     if (err) {
