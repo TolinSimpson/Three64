@@ -215,19 +215,7 @@ function ensureOverlayHTMLInline() {
   });
   hud.appendChild(row);
 
-  // Editor button
-  const editorBtn = document.createElement('button');
-  editorBtn.textContent = 'Editor';
-  editorBtn.title = 'Open current GLTF in editor';
-  editorBtn.style.marginLeft = '8px';
-  editorBtn.style.cursor = 'pointer';
-  editorBtn.style.background = '#1f2937';
-  editorBtn.style.color = '#9cf';
-  editorBtn.style.border = '1px solid #334';
-  editorBtn.style.padding = '2px 6px';
-  editorBtn.style.borderRadius = '3px';
-  editorBtn.addEventListener('click', () => openEditorForCurrentGLTF(window.__game));
-  row.appendChild(editorBtn);
+  // Editor button removed
 
   const cli = document.createElement('div');
   cli.id = 'debug-cli';
@@ -308,7 +296,7 @@ function handleCommand(line) {
   const [cmd, ...rest] = line.split(/\s+/);
   switch ((cmd || '').toLowerCase()) {
     case 'help':
-      log('commands: help, wire on|off, hud on|off, budget on|off, colliders on|off, editor, clear');
+      log('commands: help, wire on|off, hud on|off, budget on|off, colliders on|off, clear');
       break;
     case 'clear':
       if (Debug.cli.logEl) Debug.cli.logEl.innerHTML = '';
@@ -324,9 +312,6 @@ function handleCommand(line) {
       break;
     case 'colliders':
       setToggle('collidersLime', parseOnOff(rest[0]));
-      break;
-    case 'editor':
-      openEditorForCurrentGLTF(window.__game);
       break;
     default:
       log(`unknown: ${cmd}`);
@@ -369,33 +354,4 @@ function formatBytes(b) {
 }
 
 // --- Editor launcher ---
-function openEditorForCurrentGLTF(game) {
-  const url = findFirstGLTFUrl(game);
-  try {
-    const editorUrl = new URL('editor.html', document.baseURI || window.location.href);
-    if (url) editorUrl.searchParams.set('open', url);
-    window.location.assign(editorUrl.toString());
-  } catch (e) {
-    log('failed to open editor');
-  }
-}
-
-function findFirstGLTFUrl(game) {
-  try {
-    if (Array.isArray(game?.loadedGLTFs) && game.loadedGLTFs.length) {
-      return game.loadedGLTFs[game.loadedGLTFs.length - 1].url;
-    }
-  } catch {}
-  try {
-    const scene = game?.rendererCore?.scene;
-    if (!scene) return null;
-    let out = null;
-    scene.traverse((o) => {
-      if (out) return;
-      const u = o?.userData?.__sourceUrl;
-      if (u) out = u;
-    });
-    return out;
-  } catch {}
-  return null;
-}
+// Editor launch functionality removed
