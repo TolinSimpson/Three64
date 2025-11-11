@@ -49,9 +49,23 @@ export class Scene extends Component {
     }
   }
 
-  static getDefaultParams() {
-    // Extend with scene component authoring defaults as needed
-    return {};
+  static getParamDescriptions() {
+    return [
+      { key: 'lighting.directional.enabled', label: 'Dir Light Enabled', type: 'boolean', description: 'Enable the primary directional light.' },
+      { key: 'lighting.directional.color', label: 'Dir Light Color', type: 'color', description: 'Directional light color (hex).' },
+      { key: 'lighting.directional.intensity', label: 'Dir Light Intensity', type: 'number', min: 0, max: 5, step: 0.05, description: 'Directional light intensity.' },
+      { key: 'lighting.directional.position', label: 'Dir Light Position [x,y,z]', type: 'vec3', description: 'Directional light position in world units.' },
+      { key: 'lighting.ambient.enabled', label: 'Ambient Enabled', type: 'boolean', description: 'Enable ambient light for base illumination.' },
+      { key: 'lighting.ambient.color', label: 'Ambient Color', type: 'color', description: 'Ambient light color (hex).' },
+      { key: 'lighting.ambient.intensity', label: 'Ambient Intensity', type: 'number', min: 0, max: 2, step: 0.05, description: 'Ambient light intensity.' },
+      { key: 'skybox.enabled', label: 'Skybox Enabled', type: 'boolean', description: 'Render a procedural gradient skybox.' },
+      { key: 'skybox.size', label: 'Skybox Size', type: 'number', min: 10, max: 2000, step: 10, description: 'Skybox cube size.' },
+      { key: 'skybox.topColor', label: 'Sky Top Color', type: 'color', description: 'Top hemisphere color (hex).' },
+      { key: 'skybox.bottomColor', label: 'Sky Bottom Color', type: 'color', description: 'Bottom hemisphere color (hex).' },
+      { key: 'skybox.offset', label: 'Sky Vertical Offset', type: 'number', min: -2, max: 2, step: 0.01, description: 'Vertical gradient offset.' },
+      { key: 'skybox.exponent', label: 'Sky Exponent', type: 'number', min: 0.01, max: 3, step: 0.01, description: 'Gradient exponent shaping the curve.' },
+      { key: 'skybox.followCamera', label: 'Sky Follow Camera', type: 'boolean', description: 'Keep sky centered on the camera.' },
+    ];
   }
 
   _wireToApp(app) {

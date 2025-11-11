@@ -16,7 +16,10 @@ export class Agent extends Component {
   static getDefaultParams() {
     return {
       turnSpeed: 3.5,
-      arriveRadius: 0.25
+      arriveRadius: 0.25,
+      // Movement settings passed through to CharacterController
+      speed: 3.2,
+      sprintMultiplier: 1.8
     };
   }
 
@@ -39,6 +42,24 @@ export class Agent extends Component {
         max: 2,
         step: 0.05,
         description: 'Distance at which the agent considers itself arrived and stops.'
+      },
+      {
+        key: 'speed',
+        label: 'Move Speed (m/s)',
+        type: 'number',
+        min: 0.5,
+        max: 12,
+        step: 0.1,
+        description: 'Base ground movement speed used by the character controller.'
+      },
+      {
+        key: 'sprintMultiplier',
+        label: 'Sprint Multiplier',
+        type: 'number',
+        min: 1,
+        max: 3,
+        step: 0.05,
+        description: 'Multiplier applied to move speed when sprinting.'
       }
     ];
   }
@@ -49,7 +70,13 @@ export class Agent extends Component {
       this.object.getWorldPosition(start);
       start.y = Math.max(0, start.y);
     }
-    this.controller = new CharacterController({ position: start });
+    const opts = this.options || {};
+    this.controller = new CharacterController({
+      position: start,
+      // Pass through optional movement parameters if provided
+      speed: typeof opts.speed === 'number' ? opts.speed : undefined,
+      sprintMultiplier: typeof opts.sprintMultiplier === 'number' ? opts.sprintMultiplier : undefined,
+    });
     // Initialize facing from object rotation if available
     if (this.object && this.object.rotation) {
       this.controller.yaw = this.object.rotation.y || 0;

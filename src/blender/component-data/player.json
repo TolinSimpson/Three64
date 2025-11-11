@@ -1,0 +1,7 @@
+{
+  "type": "Player",
+  "params": {
+    "lookSensitivity": 0.0022,
+    "maxTouchPixelDelta": 120
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "type": "Agent",
+  "params": {
+    "turnSpeed": 3.5,
+    "arriveRadius": 0.25
+  }
+}
