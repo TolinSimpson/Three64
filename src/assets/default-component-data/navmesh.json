@@ -1,0 +1,21 @@
+{
+  "type": "NavMesh",
+  "params": {
+    "url": "assets/component-data/navmesh.json",
+    "smooth": true
+  },
+  "paramDescriptions": [
+    {
+      "key": "url",
+      "label": "NavMesh URL",
+      "type": "string",
+      "description": "Relative URL to navmesh JSON (vertices + triangles)."
+    },
+    {
+      "key": "smooth",
+      "label": "Smooth Path",
+      "type": "boolean",
+      "description": "Smooth using string-pulling (funnel algorithm)."
+    }
+  ]
+}
