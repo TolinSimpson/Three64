@@ -385,9 +385,56 @@ export class SceneLoader {
     if (!ud || typeof ud !== "object") return out;
     const add = (type, params) => { if (type) out.push({ type: String(type), params: params ?? undefined }); };
 
-    // Single component convenience
-    if (ud.component || ud.script) {
-      add(ud.component || ud.script, ud.options ?? ud.params ?? ud.props);
+    // Numbered components: component2, component_2, script2, script_2
+    const numbered = {};
+    for (const [k, v] of Object.entries(ud)) {
+      const m = /^component(?:_|)(\d+)$/i.exec(k) || /^script(?:_|)(\d+)$/i.exec(k);
+      if (!m) continue;
+      const idx = parseInt(m[1], 10);
+      if (!idx || idx < 2) continue; // reserve #1 for plain 'component'
+      if (typeof v === "string") {
+        numbered[idx] = { type: v, params: undefined };
+      } else if (v && typeof v === "object") {
+        numbered[idx] = { type: v.type || v.name, params: v.params ?? v.options ?? v.props };
+      }
+    }
+    // Collect per-index parameter overrides from suffixed keys: speed2 / speed_2
+    const perIndexParams = {};
+    const suffixRx = /(.*?)(?:_|)(\d+)$/;
+    for (const [k, v] of Object.entries(ud)) {
+      const m = suffixRx.exec(k);
+      if (!m) continue;
+      const base = m[1];
+      const idx = parseInt(m[2], 10);
+      if (!idx || idx < 2) continue;
+      if (!(idx in perIndexParams)) perIndexParams[idx] = {};
+      perIndexParams[idx][base] = v;
+    }
+    // Emit numbered components with collected params
+    for (const [idxStr, def] of Object.entries(numbered)) {
+      const idx = parseInt(idxStr, 10);
+      const overrides = perIndexParams[idx] || {};
+      add(def.type, overrides && Object.keys(overrides).length ? overrides : def.params);
+    }
+
+    // First (un-numbered) component: support plain keys as params if not provided via options/params/props
+    const firstType = ud.component || ud.script;
+    if (firstType) {
+      let firstParams = ud.options ?? ud.params ?? ud.props;
+      if (!firstParams || typeof firstParams !== "object") {
+        const reservedExact = new Set(["component", "script", "components"]);
+        const reservedPrefix = ["comp.", "c_"];
+        // derive from unsuffixed keys that aren't reserved or numbered
+        const derived = {};
+        for (const [k, v] of Object.entries(ud)) {
+          if (reservedExact.has(k)) continue;
+          if (reservedPrefix.some(p => k.startsWith(p))) continue;
+          if (suffixRx.test(k)) continue; // has numeric suffix -> belongs to numbered component
+          derived[k] = v;
+        }
+        firstParams = Object.keys(derived).length ? derived : undefined;
+      }
+      add(firstType, firstParams);
     }
 
     // Multiple components: array or JSON string

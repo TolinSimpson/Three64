@@ -3,5 +3,25 @@
   "params": {
     "lookSensitivity": 0.0022,
     "maxTouchPixelDelta": 120
-  }
+  },
+  "paramDescriptions": [
+    {
+      "key": "lookSensitivity",
+      "label": "Look Sensitivity",
+      "type": "number",
+      "min": 0.0001,
+      "max": 0.02,
+      "step": 0.0001,
+      "description": "Mouse/Gamepad look sensitivity used to convert deltas to yaw/pitch."
+    },
+    {
+      "key": "maxTouchPixelDelta",
+      "label": "Max Touch Delta (px/frame)",
+      "type": "number",
+      "min": 16,
+      "max": 240,
+      "step": 1,
+      "description": "Clamp for per-frame touch look pixel movement to avoid spikes."
+    }
+  ]
 }
