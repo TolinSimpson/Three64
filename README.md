@@ -2,6 +2,36 @@
 
 This project uses a minimal set of name prefixes inside GLTF scenes for rendering/physics, plus a universal component system driven by GLTF node custom properties.
 
+## Build and Local Development
+
+Prereqs:
+
+- Node.js 18+
+
+Install:
+
+```bash
+npm install
+```
+
+Build the runtime bundle (outputs `public/runtime.js`):
+
+```bash
+npm run build
+```
+
+Run a local server and open the app:
+
+```bash
+npm run serve
+# then open http://localhost:5173/public/index.html
+```
+
+Notes:
+
+- Source files live under `src/runtime`. The entrypoint is `src/runtime/main.js`.
+- The bundle is emitted to `public/runtime.js` and loaded by `public/index.html`.
+
 ## Summary
 
 - `COL_<name>`: Static convex collider mesh. Hidden at runtime; used to build physics colliders.
@@ -65,7 +95,7 @@ export default class {
 - Default factory function:
 
 ```js
-dataexport default function (game, object, options, idName) {
+export default function (game, object, options, idName) {
   return {
     init() {},
     update(dt) {},
@@ -98,7 +128,7 @@ You can attach scripts directly on GLTF nodes using Blender custom properties (e
 - Registration example:
 
 ```js
-// src/engine/component.js
+// src/runtime/component.js
 import { Component, ComponentRegistry } from "./component.js";
 
 class Rotate extends Component {
@@ -124,9 +154,9 @@ At runtime, each node with matching properties creates an instance and calls `In
 
 ## Default Scene and Scene Index
 
-- `public/scenes/scene-manifest.json` lists available scenes: `{ "id": "...", "module": "path/to/module.js" }`.
+- `public/config/scene-manifest.json` lists available scenes: `{ "id": "...", "module": "path/to/module.js" }`.
 - If the list is empty or invalid, the engine loads the built-in default scene:
-  - `src/engine/default-assets/default-scene.js` which loads `default-scene.glb`.
+  - `src/runtime/default-assets/default-scene.js` which loads `default-scene.glb`.
 
 ## Notes for Blender
 
@@ -139,9 +169,9 @@ At runtime, each node with matching properties creates an instance and calls `In
 
 ## Where It’s Implemented
 
-- Parsing and prefix handling: `src/engine/assetLoader.js` in `_processNamingConventions(...)` (supports `COL_`, `LOD*`, and collects `userData.id`).
-- Component instantiation from IDs (manifest): `src/engine/assetLoader.js` in `_instantiateProperties(...)`.
-- Component instantiation from userData (registry): `src/engine/assetLoader.js` in `_instantiateFromUserData(...)`.
+- Parsing and prefix handling: `src/runtime/assetLoader.js` in `_processNamingConventions(...)` (supports `COL_`, `LOD*`, and collects `userData.id`).
+- Component instantiation from IDs (manifest): `src/runtime/assetLoader.js` in `_instantiateProperties(...)`.
+- Component instantiation from userData (registry): `src/runtime/assetLoader.js` in `_instantiateFromUserData(...)`.
 - Fallbacks:
   - Whole-model collider if no `COL_` meshes.
   - Default scene loader if scenes index is empty.

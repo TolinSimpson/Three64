@@ -1,3 +1,4 @@
+'use strict';
 // Basic IO helpers for the engine (browser-safe)
 // - Network JSON fetch
 // - Local storage save/load

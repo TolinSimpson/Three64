@@ -1,3 +1,4 @@
+'use strict';
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { OrbitControls } from "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "https://unpkg.com/three@0.161.0/examples/jsm/controls/TransformControls.js";

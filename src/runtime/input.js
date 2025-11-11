@@ -1,3 +1,4 @@
+'use strict';
 export class Input {
   constructor(dom) {
     this.keys = new Set();

@@ -1,4 +1,5 @@
-import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
+'use strict';
+import * as THREE from "three";
 import { ComponentRegistry } from "./component.js";
 
 export class FPSController {

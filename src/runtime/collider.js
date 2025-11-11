@@ -1,5 +1,6 @@
+'use strict';
 import { Component, ComponentRegistry } from "./component.js";
-import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
+import * as THREE from "three";
 
 export default class Collider extends Component {
   Initialize() {

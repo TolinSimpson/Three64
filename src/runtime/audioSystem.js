@@ -1,3 +1,4 @@
+'use strict';
 import { config } from "./engine.js";
 
 export class AudioSystem {

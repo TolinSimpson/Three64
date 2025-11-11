@@ -1,3 +1,4 @@
+'use strict';
 export const config = {
   expansionPak: true,
   targetFPS: 30,

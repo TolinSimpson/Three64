@@ -1,5 +1,6 @@
-import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
-import { ConvexGeometry } from "https://unpkg.com/three@0.161.0/examples/jsm/geometries/ConvexGeometry.js";
+'use strict';
+import * as THREE from "three";
+import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 
 // Minimal physics: static convex colliders, simple raycasts, gravity, and slide.
 export class PhysicsWorld {

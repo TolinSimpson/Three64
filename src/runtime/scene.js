@@ -1,3 +1,4 @@
+'use strict';
 // Scene wrapper that represents a loaded scene instance.
 // It proxies core systems from the underlying app and owns scene-scoped data.
 

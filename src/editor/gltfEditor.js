@@ -1,3 +1,4 @@
+'use strict';
 // GLTF/GLB editing utilities focused on writing userData (glTF `extras`).
 // - Works in browser (TextEncoder/TextDecoder) and modern runtimes.
 // - Avoids engine dependencies; pure data-level manipulation.

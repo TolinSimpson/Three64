@@ -1,3 +1,4 @@
+'use strict';
 export class Component {
   constructor({ game, object, options, propName }) {
     this.game = game;

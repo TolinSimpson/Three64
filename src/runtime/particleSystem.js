@@ -1,4 +1,5 @@
-import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
+'use strict';
+import * as THREE from "three";
 import { config } from "./engine.js";
 
 export class ParticleSystem {
@@ -31,7 +32,7 @@ export class ParticleSystem {
     if (!this.atlas) {
       const loader = new THREE.TextureLoader();
       loader.load(
-        "/src/engine/default-assets/default-particle.png",
+        "/src/runtime/default-assets/default-particle.png",
         (tex) => {
           tex.minFilter = THREE.NearestFilter;
           tex.magFilter = THREE.NearestFilter;

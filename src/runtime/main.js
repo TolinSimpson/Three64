@@ -1,9 +1,10 @@
+'use strict';
 import { RendererCore } from "./renderer.js";
 import { PhysicsWorld } from "./physics.js";
 import { SceneLoader, GLTFAssetLoader } from "./assetLoader.js";
 import { BudgetTracker, initDebugOverlay, Debug } from "./debug.js";
 import { config, getInternalResolution } from "./engine.js";
-import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
+import * as THREE from "three";
 import { loadJSON } from "./io.js";
 // Register built-in components
 import "./default-assets/feature-showcase.js";
@@ -151,7 +152,7 @@ async function start() {
     }
   } else if (!entry || !entry.module) {
     // Fallback: built-in default scene module
-    const moduleUrl = new URL("/src/engine/default-assets/default-scene.js", document.baseURI).href;
+    const moduleUrl = new URL("/src/runtime/default-assets/default-scene.js", document.baseURI).href;
     try {
       app.loading.show("Loading scene...");
       const mod = await import(moduleUrl);
