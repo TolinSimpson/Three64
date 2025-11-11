@@ -12,6 +12,9 @@ import "./navmesh.js";
 export const config = {
   expansionPak: true,
   targetFPS: 30,
+  // If true, create a default Player bound to the camera rig at startup.
+  // Set to false to rely on GLTF-authored Player components for spawn.
+  createDefaultPlayer: false,
   renderer: {
     internalWidthBase: 320,
     internalHeightBase: 240,
@@ -136,9 +139,11 @@ export function createApp() {
   app.eventSystem = new EventSystem({ fixedTimestep: 1 / 60, dom: canvas });
 
   // Create player component bound to the camera rig
-  const player = new Player({ game: app, object: playerRig, options: {}, propName: "Player" });
-  try { player.Initialize?.(); } catch (e) { console.error("Player.Initialize failed:", e); }
-  app.componentInstances.push(player);
+  if (config.createDefaultPlayer) {
+    const player = new Player({ game: app, object: playerRig, options: {}, propName: "Player" });
+    try { player.Initialize?.(); } catch (e) { console.error("Player.Initialize failed:", e); }
+    app.componentInstances.push(player);
+  }
 
   // Phase dispatchers
   const runPhase = (method, dt) => {

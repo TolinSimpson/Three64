@@ -1,5 +1,5 @@
 'use strict';
-import { Vector3 } from "three";
+import { Vector3, Euler, Quaternion } from "three";
 import { Component, ComponentRegistry } from "./component.js";
 import { CharacterController } from "./characterController.js";
 
@@ -9,6 +9,7 @@ export class Player extends Component {
     this.controller = null;
     this.camera = null;
     this.rig = null;
+    this._disabled = false;
     const opts = (ctx && ctx.options) || {};
     this.lookSensitivity = typeof opts.lookSensitivity === 'number' ? opts.lookSensitivity : 0.0022;
     this.maxTouchPixelDelta = typeof opts.maxTouchPixelDelta === 'number' ? opts.maxTouchPixelDelta : 120;
@@ -49,20 +50,62 @@ export class Player extends Component {
     this.camera = app?.rendererCore?.camera || null;
     this.rig = this.camera?.parent || this.object || null;
     const start = new Vector3();
-    if (this.rig && this.rig.getWorldPosition) {
+    let yawFromObj = null;
+    let pitchFromObj = null;
+
+    // Prefer initializing from the GLTF object this component is attached to
+    const spawnObj = this.object || null;
+    if (spawnObj && spawnObj.getWorldPosition) {
+      try { spawnObj.updateWorldMatrix(true, false); } catch {}
+      spawnObj.getWorldPosition(start);
+      if (spawnObj.getWorldQuaternion) {
+        try {
+          const q = spawnObj.getWorldQuaternion(new Quaternion());
+          const e = new Euler(0, 0, 0, 'YXZ');
+          e.setFromQuaternion(q, 'YXZ');
+          yawFromObj = e.y;
+          pitchFromObj = e.x;
+        } catch {}
+      }
+    } else if (this.rig && this.rig.getWorldPosition) {
       this.rig.getWorldPosition(start);
       start.y = Math.max(0, start.y);
     } else if (this.camera) {
       this.camera.getWorldPosition(start);
       start.y = Math.max(0, start.y - 1.6);
     }
-    this.controller = new CharacterController({ position: start });
-    if (this.camera) this.controller.setOrientationFromCamera(this.camera);
+
+    this.controller = new CharacterController({ position: start, lookSensitivity: this.lookSensitivity });
+    if (yawFromObj !== null && pitchFromObj !== null) {
+      this.controller.yaw = yawFromObj;
+      this.controller.pitch = pitchFromObj;
+      this.controller.targetYaw = yawFromObj;
+      this.controller.targetPitch = pitchFromObj;
+    } else if (this.camera) {
+      this.controller.setOrientationFromCamera(this.camera);
+    }
+
+    // Make GLTF-authored Player authoritative over engine-default one
+    const isGLTFAuthored = !!(this.object && this.object !== (this.camera?.parent || null));
+    if (this.game && Array.isArray(this.game.componentInstances)) {
+      for (const c of this.game.componentInstances) {
+        if (!c || c === this) continue;
+        const isPlayer = (c.constructor === Player) || ((c.__typeName || "").toString().toLowerCase() === "player");
+        if (!isPlayer) continue;
+        const otherIsGLTFAuthored = !!(c.object && c.object !== (this.camera?.parent || null));
+        // If this is GLTF-authored, disable any other Player (default one). If not, but another GLTF one exists, disable self.
+        if (isGLTFAuthored) {
+          c._disabled = true;
+        } else if (otherIsGLTFAuthored) {
+          this._disabled = true;
+        }
+      }
+    }
     if (app) app.player = this;
   }
 
   Input(dt, app) {
-    if (!app?.eventSystem || !this.controller) return;
+    if (this._disabled || !app?.eventSystem || !this.controller) return;
     // Look input from touch+gamepad
     const { dx, dy } = app.eventSystem.consumeLookDelta();
     const sx = Math.max(-1, Math.min(1, dx));
@@ -85,17 +128,17 @@ export class Player extends Component {
   }
 
   FixedUpdate(dt, app) {
-    if (!this.controller) return;
+    if (this._disabled || !this.controller) return;
     this.controller.fixedStep(app, dt);
   }
 
   Update(dt /*, app */) {
-    if (!this.controller) return;
+    if (this._disabled || !this.controller) return;
     this.controller.update(dt);
   }
 
   LateUpdate(dt, app) {
-    if (!this.controller) return;
+    if (this._disabled || !this.controller) return;
     const camera = this.camera || app?.rendererCore?.camera || null;
     const rig = this.rig || camera?.parent || null;
     this.controller.lateApplyToRig(rig, camera);
