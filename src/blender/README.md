@@ -27,6 +27,7 @@ The Three64 Blender add-on streamlines two workflows:
 - Select any object.
 - Properties → Object → “Three64 Component” panel.
 - Click “Mark Navigable” to add the `navigable = True` custom property on the active object.
+- Click “Mark Double-Sided” to add the `doubleSided = True` custom property. At runtime, Three64 forces double-sided rendering for meshes under this object.
 - Choose a component from the dropdown and click “Add”.
   - This stamps custom properties on the object (including nested values flattened as dotted keys).
   - Color params get a color picker + hex field.
@@ -50,9 +51,13 @@ You can export a simple triangle-soup navmesh as JSON for use by the Three64 run
    - Apply Modifiers: exports evaluated meshes with modifiers applied.
    - Export Path: where to write JSON (supports `//` relative to .blend).
      - Recommended path for this repo during dev: `C:/Users/Tolin/Desktop/Three64/public/build/assets/component-data/navmesh.json`
+   - Wireframe: display the preview as wireframe when visualizing (viewport-only).
 4. Click “Bake & Export NavMesh (JSON)”. The output file contains:
    - `vertices`: array of `[x, y, z]` float triplets
    - `triangles`: flat array of vertex indices (groups of 3)
+5. Visualize in Blender:
+   - In the same NavMesh panel, click “Visualize NavMesh (JSON)” to create/update a `NavMeshPreview` mesh object from the current Export Path.
+   - The preview converts axes back to Blender coordinates if the JSON was exported with “Convert to Three.js (Y-up)”.
 
 Notes:
 - Only objects of type “MESH” are considered.
@@ -97,4 +102,14 @@ If you prefer not to use Blender for baking, you can generate the navmesh from y
 ## Version
 
 - Add-on tested with Blender 4.3+.
+
+## Double-Sided Rendering (glTF and Add-on)
+
+- Blender-native (preferred per-material): In Material Properties → Settings, turn OFF “Backface Culling”. The glTF exporter writes `material.doubleSided = true` for that material.
+  - Keep this per material for the most accurate performance and visuals.
+- Three64 Add-on (per-object override): Use “Mark Double-Sided” to set `doubleSided = True` on the object. The runtime reads this custom property (exported via glTF extras) and forces double-sided for materials on meshes under that object.
+- Runtime behavior and precedence:
+  - If the material is authored as double-sided in Blender (Backface Culling off), it will be double-sided.
+  - If the object has `doubleSided = True`, Three64 forces double-sided for its meshes.
+  - Global default remains single-sided for performance unless overridden per material or by the object property.
 

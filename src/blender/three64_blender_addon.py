@@ -439,6 +439,8 @@ def _draw_into_custom_props(self, context: "bpy.types.Context"):
 	# Mark Navigable button
 	row_nav = box.row(align=True)
 	row_nav.operator("three64.mark_navigable", text="Mark Navigable", icon="CHECKBOX_HLT")
+	row_ds = box.row(align=True)
+	row_ds.operator("three64.mark_double_sided", text="Mark Double-Sided", icon="CHECKBOX_DEHLT")
 	row2 = box.row(align=True)
 	row2.prop(obj, "three64_component", text="Component")
 	op = row2.operator("three64.add_selected_component", text="", icon="ADD")
@@ -499,6 +501,8 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 			# Mark Navigable button
 			row0 = layout.row(align=True)
 			row0.operator("three64.mark_navigable", text="Mark Navigable", icon="CHECKBOX_HLT")
+			row1 = layout.row(align=True)
+			row1.operator("three64.mark_double_sided", text="Mark Double-Sided", icon="CHECKBOX_DEHLT")
 
 			row3 = layout.row(align=True)
 			row3.prop(obj, "three64_component", text="Component")
@@ -680,6 +684,33 @@ class THREE64_OT_mark_navigable(bpy.types.Operator):
 			return {"CANCELLED"}
 
 
+class THREE64_OT_mark_double_sided(bpy.types.Operator):
+	bl_idname = "three64.mark_double_sided"
+	bl_label = "Mark Double-Sided"
+	bl_description = "Set the object's doubleSided custom property to True (forces double-sided rendering at runtime)"
+	bl_options = {"REGISTER", "UNDO"}
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def execute(self, context: "bpy.types.Context"):
+		try:
+			obj = context.object
+			prop_key = "doubleSided"
+			obj[prop_key] = True
+			try:
+				ui = obj.id_properties_ui(prop_key)
+				ui.update(description="Marks this object to render with double-sided materials in Three64 runtime")
+			except Exception:
+				pass
+			self.report({"INFO"}, f"Set {prop_key}=True on '{obj.name}'")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to set doubleSided property")
+			return {"CANCELLED"}
+
+
 class THREE64_OT_bake_navmesh_json(bpy.types.Operator):
 	bl_idname = "three64.bake_navmesh_json"
 	bl_label = "Bake & Export NavMesh (JSON)"
@@ -813,6 +844,91 @@ class THREE64_OT_bake_navmesh_json(bpy.types.Operator):
 			return {"CANCELLED"}
 
 
+class THREE64_OT_visualize_navmesh_json(bpy.types.Operator):
+	bl_idname = "three64.visualize_navmesh_json"
+	bl_label = "Visualize NavMesh (JSON)"
+	bl_description = "Create/refresh a mesh object in the scene from the exported navmesh JSON"
+	bl_options = {"REGISTER", "UNDO"}
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return hasattr(context, "scene") and context.scene is not None and bpy is not None
+
+	def execute(self, context: "bpy.types.Context"):
+		try:
+			scene = context.scene
+			path = _abspath(getattr(scene, "three64_nav_export_path", "//navmesh.json"))
+			if not path or not os.path.isfile(path):
+				self.report({"WARNING"}, "NavMesh JSON not found; check Export Path")
+				return {"CANCELLED"}
+			with open(path, "r", encoding="utf-8") as f:
+				data = json.load(f)
+			verts_in = data.get("vertices") or []
+			tris_in = data.get("triangles") or []
+			meta = data.get("meta") or {}
+			convert_axes = bool(meta.get("convertAxes", True))
+
+			# Convert Three.js coords back to Blender if they were converted during export:
+			# JSON vertex = (x, y, z) = (blender.x, blender.z, -blender.y)
+			# Blender vertex = (x, y, z) = (json.x, -json.z, json.y)
+			verts_out = []
+			for v in verts_in:
+				if not isinstance(v, (list, tuple)) or len(v) < 3:
+					continue
+				if convert_axes:
+					verts_out.append((float(v[0]), float(-v[2]), float(v[1])))
+				else:
+					verts_out.append((float(v[0]), float(v[1]), float(v[2])))
+
+			if not verts_out or not isinstance(tris_in, list) or len(tris_in) < 3:
+				self.report({"WARNING"}, "NavMesh JSON has no vertices/triangles")
+				return {"CANCELLED"}
+
+			faces = []
+			for i in range(0, len(tris_in) - 2, 3):
+				a = int(tris_in[i]); b = int(tris_in[i + 1]); c = int(tris_in[i + 2])
+				if a < 0 or b < 0 or c < 0: continue
+				if a >= len(verts_out) or b >= len(verts_out) or c >= len(verts_out): continue
+				faces.append((a, b, c))
+			if not faces:
+				self.report({"WARNING"}, "No valid triangle faces in JSON")
+				return {"CANCELLED"}
+
+			# Create or refresh a single preview object
+			obj_name = "NavMeshPreview"
+			obj = bpy.data.objects.get(obj_name)
+			if obj and obj.type != 'MESH':
+				# Avoid name collision with non-mesh
+				obj = None
+			if obj is None:
+				mesh = bpy.data.meshes.new(obj_name)
+				mesh.from_pydata(verts_out, [], faces)
+				mesh.update()
+				obj = bpy.data.objects.new(obj_name, mesh)
+				context.scene.collection.objects.link(obj)
+			else:
+				me = obj.data
+				if not me:
+					me = bpy.data.meshes.new(obj_name)
+					obj.data = me
+				me.clear_geometry()
+				me.from_pydata(verts_out, [], faces)
+				me.update()
+
+			# Display preferences
+			wire = bool(getattr(scene, "three64_nav_vis_wireframe", True))
+			try:
+				obj.display_type = 'WIRE' if wire else 'TEXTURED'
+			except Exception:
+				pass
+
+			self.report({"INFO"}, f"NavMesh visualized: {len(verts_out)} verts, {len(faces)} tris")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to visualize navmesh")
+			return {"CANCELLED"}
+
+
 class VIEW3D_PT_three64_navmesh(bpy.types.Panel):
 	bl_label = "Three64 NavMesh"
 	bl_idname = "VIEW3D_PT_three64_navmesh"
@@ -830,7 +946,11 @@ class VIEW3D_PT_three64_navmesh(bpy.types.Panel):
 		col.prop(scene, "three64_nav_convert_axes")
 		col.prop(scene, "three64_nav_apply_modifiers")
 		col.prop(scene, "three64_nav_export_path")
-		col.operator(THREE64_OT_bake_navmesh_json.bl_idname, icon="MESH_DATA")
+		col.prop(scene, "three64_nav_vis_wireframe", text="Wireframe")
+		row = col.row(align=True)
+		row.operator(THREE64_OT_bake_navmesh_json.bl_idname, icon="MESH_DATA")
+		row.operator(THREE64_OT_visualize_navmesh_json.bl_idname, icon="HIDE_OFF")
+
 
 classes = (
 	THREE64_OT_reload_component_data,
@@ -839,7 +959,9 @@ classes = (
 	THREE64_OT_open_addon_preferences,
 	THREE64_OT_add_selected_component,
 	THREE64_OT_mark_navigable,
+	THREE64_OT_mark_double_sided,
 	THREE64_OT_bake_navmesh_json,
+	THREE64_OT_visualize_navmesh_json,
 	VIEW3D_PT_three64_navmesh,
 )
 def register():
@@ -905,6 +1027,11 @@ def register():
 		bpy.types.Scene.three64_nav_apply_modifiers = bpy.props.BoolProperty(
 			name="Apply Modifiers",
 			description="Use evaluated meshes with modifiers applied",
+			default=True,
+		)
+		bpy.types.Scene.three64_nav_vis_wireframe = bpy.props.BoolProperty(
+			name="Wireframe View",
+			description="Display preview object in wireframe mode",
 			default=True,
 		)
 	except Exception:

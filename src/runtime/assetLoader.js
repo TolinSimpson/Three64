@@ -50,7 +50,20 @@ export class GLTFAssetLoader {
           stats.bonesMax = Math.max(stats.bonesMax, boneCount);
         }
 
-        const patched = this._patchMaterial(obj.material, options);
+        // Per-object override via Blender-exported custom property (extras -> userData)
+        // Accept 'doubleSided', 'DoubleSided', or 'three64DoubleSided' as truthy flags.
+        let perObjectOpts = options;
+        try {
+          const ud = obj.userData || {};
+          const ds = (typeof ud.doubleSided === "boolean" ? ud.doubleSided
+                    : typeof ud.DoubleSided === "boolean" ? ud.DoubleSided
+                    : ud.three64DoubleSided === true);
+          if (ds === true) {
+            perObjectOpts = { ...(options || {}), doubleSided: true };
+          }
+        } catch {}
+
+        const patched = this._patchMaterial(obj.material, perObjectOpts);
         obj.material = patched;
         stats.materials += Array.isArray(patched) ? patched.length : 1;
 
