@@ -12,6 +12,7 @@ import { UISystem } from "./uiSystem.js";
 import { HealthbarComponent } from "./healthbarComponent.js";
 import "./navmesh.js";
 import "./raycaster.js";
+import "./volume.js";
 export const config = {
   expansionPak: true,
   targetFPS: 30,
