@@ -529,9 +529,20 @@ def _draw_into_custom_props(self, context: "bpy.types.Context"):
 	row.operator(THREE64_OT_reload_component_data.bl_idname, text="", icon="FILE_REFRESH")
 	# Mark Navigable button
 	row_nav = box.row(align=True)
-	row_nav.operator("three64.mark_navigable", text="Mark Navigable", icon="CHECKBOX_HLT")
+	try:
+		nav_key = getattr(context.scene, "three64_nav_prop_key", "navigable")
+		nav_on = bool(obj.get(nav_key, False))
+		nav_icon = "CHECKBOX_HLT" if nav_on else "CHECKBOX_DEHLT"
+		row_nav.operator("three64.mark_navigable", text="Toggle Navigable", icon=nav_icon)
+	except Exception:
+		row_nav.operator("three64.mark_navigable", text="Toggle Navigable", icon="CHECKBOX_DEHLT")
 	row_ds = box.row(align=True)
-	row_ds.operator("three64.mark_double_sided", text="Mark Double-Sided", icon="CHECKBOX_DEHLT")
+	try:
+		ds_on = bool(obj.get("doubleSided", False))
+		ds_icon = "CHECKBOX_HLT" if ds_on else "CHECKBOX_DEHLT"
+		row_ds.operator("three64.mark_double_sided", text="Toggle Double-Sided", icon=ds_icon)
+	except Exception:
+		row_ds.operator("three64.mark_double_sided", text="Toggle Double-Sided", icon="CHECKBOX_DEHLT")
 	row2 = box.row(align=True)
 	row2.prop(obj, "three64_component", text="Component")
 	op = row2.operator("three64.add_selected_component", text="", icon="ADD")
@@ -591,9 +602,20 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 		if obj:
 			# Mark Navigable button
 			row0 = layout.row(align=True)
-			row0.operator("three64.mark_navigable", text="Mark Navigable", icon="CHECKBOX_HLT")
+			try:
+				nav_key = getattr(context.scene, "three64_nav_prop_key", "navigable")
+				nav_on = bool(obj.get(nav_key, False))
+				nav_icon = "CHECKBOX_HLT" if nav_on else "CHECKBOX_DEHLT"
+				row0.operator("three64.mark_navigable", text="Toggle Navigable", icon=nav_icon)
+			except Exception:
+				row0.operator("three64.mark_navigable", text="Toggle Navigable", icon="CHECKBOX_DEHLT")
 			row1 = layout.row(align=True)
-			row1.operator("three64.mark_double_sided", text="Mark Double-Sided", icon="CHECKBOX_DEHLT")
+			try:
+				ds_on = bool(obj.get("doubleSided", False))
+				ds_icon = "CHECKBOX_HLT" if ds_on else "CHECKBOX_DEHLT"
+				row1.operator("three64.mark_double_sided", text="Toggle Double-Sided", icon=ds_icon)
+			except Exception:
+				row1.operator("three64.mark_double_sided", text="Toggle Double-Sided", icon="CHECKBOX_DEHLT")
 
 			row3 = layout.row(align=True)
 			row3.prop(obj, "three64_component", text="Component")
@@ -832,13 +854,14 @@ class THREE64_OT_mark_navigable(bpy.types.Operator):
 			obj = context.object
 			# Use scene-configured key if available; default to 'navigable'
 			prop_key = getattr(context.scene, "three64_nav_prop_key", "navigable")
-			obj[prop_key] = True
+			cur = bool(obj.get(prop_key, False))
+			obj[prop_key] = not cur
 			try:
 				ui = obj.id_properties_ui(prop_key)
-				ui.update(description="Marks this object as walkable for Three64 navmesh baking")
+				ui.update(description="Marks this object as walkable for Three64 navmesh baking (toggle)")
 			except Exception:
 				pass
-			self.report({"INFO"}, f"Set {prop_key}=True on '{obj.name}'")
+			self.report({"INFO"}, f"Set {prop_key}={obj.get(prop_key)} on '{obj.name}'")
 			return {"FINISHED"}
 		except Exception:
 			self.report({"ERROR"}, "Failed to set navigable property")
@@ -859,13 +882,14 @@ class THREE64_OT_mark_double_sided(bpy.types.Operator):
 		try:
 			obj = context.object
 			prop_key = "doubleSided"
-			obj[prop_key] = True
+			cur = bool(obj.get(prop_key, False))
+			obj[prop_key] = not cur
 			try:
 				ui = obj.id_properties_ui(prop_key)
-				ui.update(description="Marks this object to render with double-sided materials in Three64 runtime")
+				ui.update(description="Marks this object to render with double-sided materials in Three64 runtime (toggle)")
 			except Exception:
 				pass
-			self.report({"INFO"}, f"Set {prop_key}=True on '{obj.name}'")
+			self.report({"INFO"}, f"Set {prop_key}={obj.get(prop_key)} on '{obj.name}'")
 			return {"FINISHED"}
 		except Exception:
 			self.report({"ERROR"}, "Failed to set doubleSided property")
@@ -1113,152 +1137,6 @@ class VIEW3D_PT_three64_navmesh(bpy.types.Panel):
 		row.operator(THREE64_OT_visualize_navmesh_json.bl_idname, icon="HIDE_OFF")
 
 
-classes = (
-	THREE64_OT_reload_component_data,
-	Three64AddonPreferences,
-	OBJECT_PT_three64_component,
-	THREE64_OT_open_addon_preferences,
-	THREE64_OT_add_selected_component,
-	THREE64_OT_mark_navigable,
-	THREE64_OT_mark_double_sided,
-	THREE64_OT_bake_navmesh_json,
-	THREE64_OT_visualize_navmesh_json,
-	VIEW3D_PT_three64_navmesh,
-	THREE64_OT_set_archetype,
-	THREE64_OT_add_override,
-	THREE64_OT_add_trait,
-	THREE64_OT_set_pool,
-	THREE64_OT_set_inst_key,
-	THREE64_OT_insert_inst_tag,
-)
-def register():
-	for cls in classes:
-		bpy.utils.register_class(cls)
-	# Per-object property: selected component identifier (matches filename w/o extension)
-	bpy.types.Object.three64_component = bpy.props.EnumProperty(
-		name="Three64 Component",
-		description="Component defined by JSON in component-data directory",
-		items=_enum_items,
-		update=_on_component_changed,
-	)
-	# Color picker helpers
-	try:
-		bpy.types.Object.three64_color_picker = bpy.props.FloatVectorProperty(
-			name="Color",
-			size=3,
-			subtype="COLOR",
-			min=0.0, max=1.0,
-			default=(1.0, 1.0, 1.0),
-			update=lambda self, ctx: _on_color_picker_changed(self, ctx),
-		)
-	except Exception:
-		pass
-	try:
-		bpy.types.Object.three64_color_picker_target = bpy.props.StringProperty(
-			name="Color Target",
-			default="",
-		)
-	except Exception:
-		pass
-	# Also draw within the default Custom Properties panel for convenience
-	try:
-		bpy.types.OBJECT_PT_custom_props.append(_draw_into_custom_props)
-	except Exception:
-		pass
-	# NavMesh bake settings on the Scene
-	try:
-		bpy.types.Scene.three64_nav_prop_key = bpy.props.StringProperty(
-			name="Filter Property",
-			description="Only include meshes with this custom property set truthy",
-			default="navigable",
-		)
-		bpy.types.Scene.three64_nav_slope_max = bpy.props.FloatProperty(
-			name="Max Slope (deg)",
-			description="Maximum surface slope to consider walkable (Blender Z-up)",
-			default=45.0,
-			min=0.0, max=89.9,
-			subtype='ANGLE',
-			unit='ROTATION',
-		)
-		bpy.types.Scene.three64_nav_export_path = bpy.props.StringProperty(
-			name="Export Path",
-			description="Target JSON path (supports // relative to .blend)",
-			subtype="FILE_PATH",
-			default="//navmesh.json",
-		)
-		bpy.types.Scene.three64_nav_convert_axes = bpy.props.BoolProperty(
-			name="Convert to Three.js (Y-up)",
-			description="Convert Blender coords (X,Y,Z) to Three.js (X,Y,Z) as (x, z, -y)",
-			default=True,
-		)
-		bpy.types.Scene.three64_nav_apply_modifiers = bpy.props.BoolProperty(
-			name="Apply Modifiers",
-			description="Use evaluated meshes with modifiers applied",
-			default=True,
-		)
-		bpy.types.Scene.three64_nav_vis_wireframe = bpy.props.BoolProperty(
-			name="Wireframe View",
-			description="Display preview object in wireframe mode",
-			default=True,
-		)
-	except Exception:
-		pass
-
-
-def unregister():
-	# Remove custom props extension
-	try:
-		bpy.types.OBJECT_PT_custom_props.remove(_draw_into_custom_props)
-	except Exception:
-		pass
-	# Remove helper properties
-	try:
-		del bpy.types.Object.three64_color_picker
-	except Exception:
-		pass
-	try:
-		del bpy.types.Object.three64_color_picker_target
-	except Exception:
-		pass
-	# Remove scene navmesh props
-	for pname in (
-		"three64_nav_prop_key",
-		"three64_nav_slope_max",
-		"three64_nav_export_path",
-		"three64_nav_convert_axes",
-		"three64_nav_apply_modifiers",
-	):
-		try:
-			delattr(bpy.types.Scene, pname)
-		except Exception:
-			pass
-	# Remove property
-	if hasattr(bpy.types.Object, "three64_component"):
-		try:
-			del bpy.types.Object.three64_component
-		except Exception:
-			pass
-	# Remove dynamic enum props
-	global _dyn_enum_pids
-	try:
-		for pid in _dyn_enum_pids:
-			prop_name = f"three64_enum_{pid}"
-			if hasattr(bpy.types.Object, prop_name):
-				try:
-					delattr(bpy.types.Object, prop_name)
-				except Exception:
-					pass
-	except Exception:
-		pass
-	_dyn_enum_pids = []
-	# Unregister classes (reverse order)
-	for cls in reversed(classes):
-		try:
-			bpy.utils.unregister_class(cls)
-		except Exception:
-			pass
-
-
 # -----------------------------
 # Archetype & Instancing authoring operators
 # -----------------------------
@@ -1489,5 +1367,151 @@ class THREE64_OT_insert_inst_tag(bpy.types.Operator):
 		except Exception:
 			self.report({"ERROR"}, "Failed to insert name tag")
 			return {"CANCELLED"}
+
+
+classes = (
+	THREE64_OT_reload_component_data,
+	Three64AddonPreferences,
+	OBJECT_PT_three64_component,
+	THREE64_OT_open_addon_preferences,
+	THREE64_OT_add_selected_component,
+	THREE64_OT_mark_navigable,
+	THREE64_OT_mark_double_sided,
+	THREE64_OT_bake_navmesh_json,
+	THREE64_OT_visualize_navmesh_json,
+	VIEW3D_PT_three64_navmesh,
+	THREE64_OT_set_archetype,
+	THREE64_OT_add_override,
+	THREE64_OT_add_trait,
+	THREE64_OT_set_pool,
+	THREE64_OT_set_inst_key,
+	THREE64_OT_insert_inst_tag,
+)
+def register():
+	for cls in classes:
+		bpy.utils.register_class(cls)
+	# Per-object property: selected component identifier (matches filename w/o extension)
+	bpy.types.Object.three64_component = bpy.props.EnumProperty(
+		name="Three64 Component",
+		description="Component defined by JSON in component-data directory",
+		items=_enum_items,
+		update=_on_component_changed,
+	)
+	# Color picker helpers
+	try:
+		bpy.types.Object.three64_color_picker = bpy.props.FloatVectorProperty(
+			name="Color",
+			size=3,
+			subtype="COLOR",
+			min=0.0, max=1.0,
+			default=(1.0, 1.0, 1.0),
+			update=lambda self, ctx: _on_color_picker_changed(self, ctx),
+		)
+	except Exception:
+		pass
+	try:
+		bpy.types.Object.three64_color_picker_target = bpy.props.StringProperty(
+			name="Color Target",
+			default="",
+		)
+	except Exception:
+		pass
+	# Also draw within the default Custom Properties panel for convenience
+	try:
+		bpy.types.OBJECT_PT_custom_props.append(_draw_into_custom_props)
+	except Exception:
+		pass
+	# NavMesh bake settings on the Scene
+	try:
+		bpy.types.Scene.three64_nav_prop_key = bpy.props.StringProperty(
+			name="Filter Property",
+			description="Only include meshes with this custom property set truthy",
+			default="navigable",
+		)
+		bpy.types.Scene.three64_nav_slope_max = bpy.props.FloatProperty(
+			name="Max Slope (deg)",
+			description="Maximum surface slope to consider walkable (Blender Z-up)",
+			default=45.0,
+			min=0.0, max=89.9,
+			subtype='ANGLE',
+			unit='ROTATION',
+		)
+		bpy.types.Scene.three64_nav_export_path = bpy.props.StringProperty(
+			name="Export Path",
+			description="Target JSON path (supports // relative to .blend)",
+			subtype="FILE_PATH",
+			default="//navmesh.json",
+		)
+		bpy.types.Scene.three64_nav_convert_axes = bpy.props.BoolProperty(
+			name="Convert to Three.js (Y-up)",
+			description="Convert Blender coords (X,Y,Z) to Three.js (X,Y,Z) as (x, z, -y)",
+			default=True,
+		)
+		bpy.types.Scene.three64_nav_apply_modifiers = bpy.props.BoolProperty(
+			name="Apply Modifiers",
+			description="Use evaluated meshes with modifiers applied",
+			default=True,
+		)
+		bpy.types.Scene.three64_nav_vis_wireframe = bpy.props.BoolProperty(
+			name="Wireframe View",
+			description="Display preview object in wireframe mode",
+			default=True,
+		)
+	except Exception:
+		pass
+
+
+def unregister():
+	# Remove custom props extension
+	try:
+		bpy.types.OBJECT_PT_custom_props.remove(_draw_into_custom_props)
+	except Exception:
+		pass
+	# Remove helper properties
+	try:
+		del bpy.types.Object.three64_color_picker
+	except Exception:
+		pass
+	try:
+		del bpy.types.Object.three64_color_picker_target
+	except Exception:
+		pass
+	# Remove scene navmesh props
+	for pname in (
+		"three64_nav_prop_key",
+		"three64_nav_slope_max",
+		"three64_nav_export_path",
+		"three64_nav_convert_axes",
+		"three64_nav_apply_modifiers",
+	):
+		try:
+			delattr(bpy.types.Scene, pname)
+		except Exception:
+			pass
+	# Remove property
+	if hasattr(bpy.types.Object, "three64_component"):
+		try:
+			del bpy.types.Object.three64_component
+		except Exception:
+			pass
+	# Remove dynamic enum props
+	global _dyn_enum_pids
+	try:
+		for pid in _dyn_enum_pids:
+			prop_name = f"three64_enum_{pid}"
+			if hasattr(bpy.types.Object, prop_name):
+				try:
+					delattr(bpy.types.Object, prop_name)
+				except Exception:
+					pass
+	except Exception:
+		pass
+	_dyn_enum_pids = []
+	# Unregister classes (reverse order)
+	for cls in reversed(classes):
+		try:
+			bpy.utils.unregister_class(cls)
+		except Exception:
+			pass
 
 
