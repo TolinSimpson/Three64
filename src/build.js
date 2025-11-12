@@ -347,16 +347,6 @@ const config = {
                 noErrorOnMissing: true,
               },
             ]),
-        // Docs: only copy during development so they are not included in production builds
-        ...(isDev
-          ? [
-              {
-                from: path.resolve(__dirname, '../src/docs'),
-                to: path.resolve(__dirname, '../public/docs'),
-                noErrorOnMissing: true,
-              },
-            ]
-          : []),
       ],
     }),
     // Define build-time dev flag for the runtime
