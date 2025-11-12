@@ -10,6 +10,8 @@ export class EventSystem {
       update: [],
       late: [],
     };
+    // Named gameplay events (pub/sub)
+    this._events = new Map();
     // Input state
     this.dom = dom || document.body;
     this.keys = new Set();
@@ -225,6 +227,31 @@ export class EventSystem {
     const j = this._jumpQueued;
     this._jumpQueued = false;
     return j;
+  }
+
+  // ---------------------------
+  // Gameplay event pub/sub
+  // ---------------------------
+  onEvent(name, fn) {
+    if (!name || typeof fn !== 'function') return;
+    const key = String(name);
+    if (!this._events.has(key)) this._events.set(key, []);
+    this._events.get(key).push(fn);
+  }
+  offEvent(name, fn) {
+    const key = String(name || '');
+    const list = this._events.get(key);
+    if (!list) return;
+    if (!fn) { this._events.delete(key); return; }
+    const idx = list.indexOf(fn);
+    if (idx >= 0) list.splice(idx, 1);
+  }
+  emit(name, payload) {
+    const key = String(name || '');
+    const list = this._events.get(key) || [];
+    for (let i = 0; i < list.length; i++) {
+      try { list[i](payload); } catch (e) { console.error(`EventSystem emit '${key}' error:`, e); }
+    }
   }
 }
 
