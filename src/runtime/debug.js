@@ -215,7 +215,31 @@ function ensureOverlayHTMLInline() {
   });
   hud.appendChild(row);
 
-  // Editor button removed
+  // Docs button (dev only; overlay is only created in devMode)
+  const docsRow = document.createElement('div');
+  docsRow.style.marginTop = '6px';
+  const docsBtn = document.createElement('button');
+  docsBtn.textContent = 'Open Docs';
+  docsBtn.style.pointerEvents = 'auto';
+  docsBtn.style.background = '#1e1e1e';
+  docsBtn.style.color = '#9cf';
+  docsBtn.style.border = '1px solid #334';
+  docsBtn.style.padding = '4px 8px';
+  docsBtn.style.cursor = 'pointer';
+  docsBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    try {
+      const url = new URL(window.location.href);
+      // Resolve relative to /public/ so it works with file:// and http
+      // If served from public/index.html, 'docs/help.html' is a sibling path.
+      const target = 'docs/help.html';
+      window.open(target, '_blank', 'noopener,noreferrer');
+    } catch {
+      window.open('docs/help.html', '_blank', 'noopener,noreferrer');
+    }
+  });
+  docsRow.appendChild(docsBtn);
+  hud.appendChild(docsRow);
 
   const cli = document.createElement('div');
   cli.id = 'debug-cli';
