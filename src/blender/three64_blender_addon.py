@@ -1482,6 +1482,7 @@ classes = (
 	THREE64_OT_add_selected_component,
 	THREE64_OT_mark_navigable,
 	THREE64_OT_mark_double_sided,
+	THREE64_OT_mark_collider,
 	THREE64_OT_bake_navmesh_json,
 	THREE64_OT_visualize_navmesh_json,
 	VIEW3D_PT_three64_navmesh,
