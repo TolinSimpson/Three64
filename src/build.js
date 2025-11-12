@@ -9,6 +9,7 @@ import CopyWebpackPlugin from 'copy-webpack-plugin';
 import fs from 'fs';
 import url from 'url';
 import { ComponentRegistry } from './runtime/component.js';
+import JavaScriptObfuscator from 'javascript-obfuscator';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +19,7 @@ const isWatch = process.argv.includes('--watch');
 const isDevEnv = (process.env.NODE_ENV || 'production') === 'development';
 const mode = (isWatch || isDevEnv) ? 'development' : (process.env.NODE_ENV || 'production');
 const isDev = mode === 'development';
+const isObfuscate = process.argv.includes('--obf') || process.env.OBFUSCATE === '1';
 
 // Attempt to load GLTF optimizer (gltf-pipeline) lazily so it's optional
 let __gltfPipelineChecked = false;
@@ -209,6 +211,44 @@ function collectAssetFiles() {
   return patterns;
 }
 
+function createObfuscateRuntimePlugin(options = {}) {
+  return {
+    apply(compiler) {
+      compiler.hooks.thisCompilation.tap('ObfuscateRuntimePlugin', (compilation) => {
+        const stage = webpack.Compilation.PROCESS_ASSETS_STAGE_OPTIMIZE;
+        compilation.hooks.processAssets.tap('ObfuscateRuntimePlugin', (assets) => {
+          const asset = compilation.getAsset('runtime.js');
+          if (!asset) return;
+          try {
+            const src = typeof asset.source.source === 'function' ? asset.source.source() : asset.source();
+            const code = typeof src === 'string' ? src : String(src);
+            const result = JavaScriptObfuscator.obfuscate(code, {
+              compact: true,
+              controlFlowFlattening: false,
+              deadCodeInjection: false,
+              identifierNamesGenerator: 'hexadecimal',
+              numbersToExpressions: false,
+              renameGlobals: false,
+              selfDefending: true,
+              simplify: true,
+              splitStrings: false,
+              stringArray: true,
+              stringArrayEncoding: [],
+              stringArrayThreshold: 1.0,
+              rotateStringArray: true,
+              ...options,
+            });
+            const obfuscated = result.getObfuscatedCode();
+            compilation.updateAsset('runtime.js', new webpack.sources.RawSource(obfuscated));
+          } catch {
+            // If obfuscation fails, leave the original asset intact.
+          }
+        });
+      });
+    }
+  };
+}
+
 const config = {
   // Enable tree-shaking and minification by default
   mode,
@@ -273,6 +313,16 @@ const config = {
                 to: path.resolve(__dirname, '../public/build/assets/textures'),
                 noErrorOnMissing: true,
               },
+              {
+                from: path.resolve(__dirname, '../src/assets/ui'),
+                to: path.resolve(__dirname, '../public/build/assets/ui'),
+                noErrorOnMissing: true,
+              },
+              {
+                from: path.resolve(__dirname, '../src/assets/css'),
+                to: path.resolve(__dirname, '../public/build/assets/css'),
+                noErrorOnMissing: true,
+              },
             ]
           : collectAssetFiles()),
         // Scene scripts (copied under build so runtime can dynamic import)
@@ -282,10 +332,40 @@ const config = {
           to: path.resolve(__dirname, '../public/build/assets/config'),
           noErrorOnMissing: true,
         },
+        // UI and CSS should always be available at runtime (copy in prod too)
+        ...(isDev
+          ? []
+          : [
+              {
+                from: path.resolve(__dirname, '../src/assets/ui'),
+                to: path.resolve(__dirname, '../public/build/assets/ui'),
+                noErrorOnMissing: true,
+              },
+              {
+                from: path.resolve(__dirname, '../src/assets/css'),
+                to: path.resolve(__dirname, '../public/build/assets/css'),
+                noErrorOnMissing: true,
+              },
+            ]),
+        // Docs: only copy during development so they are not included in production builds
+        ...(isDev
+          ? [
+              {
+                from: path.resolve(__dirname, '../src/docs'),
+                to: path.resolve(__dirname, '../public/docs'),
+                noErrorOnMissing: true,
+              },
+            ]
+          : []),
       ],
     }),
+    // Define build-time dev flag for the runtime
+    new webpack.DefinePlugin({
+      __DEV__: JSON.stringify(isDev),
+    }),
+    ...(isObfuscate ? [createObfuscateRuntimePlugin()] : []),
   ],
-  devtool: 'source-map',
+  devtool: isObfuscate ? false : 'source-map',
   stats: 'minimal',
 };
 

@@ -8,6 +8,7 @@
     "test": "echo \"No tests yet. Add Jest later.\" && exit 0",
     "editor": "node src/editor/cli.mjs",
     "build": "node src/build.js",
+    "build:obf": "cross-env NODE_ENV=production node src/build.js --obf",
     "dev": "concurrently -n build,serve -c yellow,cyan \"cross-env NODE_ENV=development node src/build.js --watch\" \"live-server public --port=5173 --no-browser\""
   },
   "bin": {},
@@ -15,11 +16,10 @@
     "webpack": "^5.95.0",
     "webpack-cli": "^5.1.4",
     "copy-webpack-plugin": "^11.0.0",
-    "gltf-pipeline": "^3.1.7",
-    "draco3d": "^1.5.7",
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",
-    "live-server": "^1.2.2"
+    "live-server": "^1.2.2",
+    "javascript-obfuscator": "^4.1.0"
   },
   "dependencies": {
     "three": "^0.161.0",
