@@ -28,6 +28,8 @@ _cached_dir_abs: str = ""
 _cached_index: Dict[str, str] = {}
 _cached_param_desc: Dict[str, Dict[str, str]] = {}
 _cached_param_types: Dict[str, Dict[str, str]] = {}
+_cached_param_enums: Dict[str, Dict[str, List[str]]] = {}
+_dyn_enum_pids: List[str] = []
 
 def _axis_name_to_index(name: str) -> int:
 	try:
@@ -156,6 +158,83 @@ def _is_color_key(identifier: str, flat_key: str) -> bool:
 	except Exception:
 		return False
 
+def _is_enum_key(identifier: str, flat_key: str) -> bool:
+	try:
+		em = _cached_param_enums.get(identifier, {})
+		return flat_key in em and isinstance(em.get(flat_key), list) and len(em.get(flat_key) or []) > 0
+	except Exception:
+		return False
+
+def _enum_options(identifier: str, flat_key: str) -> List[str]:
+	try:
+		em = _cached_param_enums.get(identifier, {})
+		opts = em.get(flat_key) or []
+		# Normalize to strings
+		return [str(o) for o in opts if isinstance(o, (str, int, float))]
+	except Exception:
+		return []
+
+def _sanitize_pid(text: str) -> str:
+	try:
+		s = "".join(ch if ch.isalnum() or ch in ("_",) else "_" for ch in str(text))
+		while "__" in s:
+			s = s.replace("__", "_")
+		return s.strip("_")
+	except Exception:
+		return "enum"
+
+def _ensure_enum_runtime_property(pid: str):
+	"""
+	Dynamically define a bpy.types.Object EnumProperty for a specific parameter id.
+	Stores/reads options and target key from object ID properties:
+	- three64_enum_opts__{pid}: JSON array of option strings
+	- three64_enum_target__{pid}: target ID prop key to mirror
+	Value is kept in: Object.three64_enum_{pid}
+	"""
+	try:
+		global _dyn_enum_pids
+		prop_name = f"three64_enum_{pid}"
+		if hasattr(bpy.types.Object, prop_name):
+			if pid not in _dyn_enum_pids:
+				_dyn_enum_pids.append(pid)
+			return
+		def _items(self, context):
+			try:
+				raw = self.get(f"three64_enum_opts__{pid}", "[]")
+				opts = []
+				try:
+					opts = json.loads(raw) if isinstance(raw, str) else []
+				except Exception:
+					opts = []
+				items = []
+				for o in (opts or []):
+					val = str(o)
+					items.append((val, val, ""))
+				# Ensure current is present
+				cur = getattr(self, prop_name, "")
+				if isinstance(cur, str) and cur and all(it[0] != cur for it in items):
+					items.insert(0, (cur, cur, ""))
+				return items or [("", "", "")]
+			except Exception:
+				return [("", "", "")]
+		def _update(self, context):
+			try:
+				target = self.get(f"three64_enum_target__{pid}", "")
+				if isinstance(target, str) and target:
+					cur = getattr(self, prop_name, "")
+					self[target] = cur
+			except Exception:
+				pass
+		setattr(bpy.types.Object, prop_name, bpy.props.EnumProperty(
+			name="",
+			description="",
+			items=_items,
+			update=_update,
+		))
+		_dyn_enum_pids.append(pid)
+	except Exception:
+		pass
+
 
 def _abspath(path: str) -> str:
 	# Resolve Blender-style paths (supports // relative to current .blend)
@@ -221,6 +300,7 @@ def _ensure_cache(context: "bpy.types.Context") -> List[Tuple[str, str, str]]:
 		_cached_index = {}
 		_cached_param_desc = {}
 		_cached_param_types = {}
+		_cached_param_enums = {}
 		try:
 			for p in _read_component_files(dir_path_abs):
 				identifier = os.path.splitext(os.path.basename(p))[0]
@@ -242,19 +322,29 @@ def _ensure_cache(context: "bpy.types.Context") -> List[Tuple[str, str, str]]:
 								n = entry.get("name") or entry.get("key")
 								d = entry.get("description") or entry.get("desc") or entry.get("tooltip")
 								t = entry.get("type")
+								opts = entry.get("options")
 								if isinstance(n, str) and isinstance(d, str):
 									# normalize key to string
 									desc_map[n] = d
 								if isinstance(n, str) and isinstance(t, str):
 									type_map[n] = t
+								# Capture enum options if provided
+								if isinstance(n, str) and isinstance(t, str) and t.lower() == "enum":
+									try:
+										if isinstance(opts, list):
+											_cached_param_enums.setdefault(identifier, {})[n] = [str(x) for x in opts]
+									except Exception:
+										pass
 					_cached_param_desc[identifier] = desc_map
 					_cached_param_types[identifier] = type_map
 				except Exception:
 					_cached_param_desc[identifier] = {}
 					_cached_param_types[identifier] = {}
+					_cached_param_enums[identifier] = {}
 		except Exception:
 			_cached_index = {}
 			_cached_param_desc = {}
+			_cached_param_enums = {}
 	return _cached_items
 
 
@@ -536,6 +626,40 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 									row2 = box.row(align=True)
 									row2.prop(obj, "three64_color_picker", text=pkey)
 									row2.prop(obj, f'["{prop_name}"]', text="Hex")
+								elif _is_enum_key(comp_name, pkey):
+									try:
+										opts = _enum_options(comp_name, pkey)
+										pid = _sanitize_pid(f"{comp_name}__{pkey}_{idx}")
+										_ensure_enum_runtime_property(pid)
+										# seed options + target + value
+										obj[f"three64_enum_opts__{pid}"] = json.dumps(opts)
+										obj[f"three64_enum_target__{pid}"] = prop_name
+										cur = obj.get(prop_name, "")
+										if not isinstance(cur, str) or cur == "":
+											cur = opts[0] if opts else ""
+											obj[prop_name] = cur
+										setattr(obj, f"three64_enum_{pid}", cur)
+										box.prop(obj, f"three64_enum_{pid}", text=pkey)
+									except Exception:
+										box.prop(obj, f'["{prop_name}"]', text=pkey)
+								else:
+									box.prop(obj, f'["{prop_name}"]', text=pkey)
+								elif _is_enum_key(comp_name, pkey):
+									try:
+										opts = _enum_options(comp_name, pkey)
+										pid = _sanitize_pid(f"{comp_name}__{pkey}_{idx}")
+										_ensure_enum_runtime_property(pid)
+										# seed options + target + value
+										obj[f"three64_enum_opts__{pid}"] = json.dumps(opts)
+										obj[f"three64_enum_target__{pid}"] = prop_name
+										cur = obj.get(prop_name, "")
+										if not isinstance(cur, str) or cur == "":
+											cur = opts[0] if opts else ""
+											obj[prop_name] = cur
+										setattr(obj, f"three64_enum_{pid}", cur)
+										box.prop(obj, f"three64_enum_{pid}", text=pkey)
+									except Exception:
+										box.prop(obj, f'["{prop_name}"]', text=pkey)
 								else:
 									box.prop(obj, f'["{prop_name}"]', text=pkey)
 							except Exception:
@@ -1071,6 +1195,19 @@ def unregister():
 			del bpy.types.Object.three64_component
 		except Exception:
 			pass
+	# Remove dynamic enum props
+	global _dyn_enum_pids
+	try:
+		for pid in _dyn_enum_pids:
+			prop_name = f"three64_enum_{pid}"
+			if hasattr(bpy.types.Object, prop_name):
+				try:
+					delattr(bpy.types.Object, prop_name)
+				except Exception:
+					pass
+	except Exception:
+		pass
+	_dyn_enum_pids = []
 	# Unregister classes (reverse order)
 	for cls in reversed(classes):
 		try:
