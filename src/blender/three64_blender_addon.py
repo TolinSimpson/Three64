@@ -543,6 +543,14 @@ def _draw_into_custom_props(self, context: "bpy.types.Context"):
 		row_ds.operator("three64.mark_double_sided", text="Toggle Double-Sided", icon=ds_icon)
 	except Exception:
 		row_ds.operator("three64.mark_double_sided", text="Toggle Double-Sided", icon="CHECKBOX_DEHLT")
+	# Collider authoring
+	row_col = box.row(align=True)
+	row_col.operator("three64.mark_collider", text="Set Collider", icon="MOD_PHYSICS")
+	try:
+		op_clear = row_col.operator("three64.mark_collider", text="", icon="X")
+		op_clear.clear = True
+	except Exception:
+		pass
 	row2 = box.row(align=True)
 	row2.prop(obj, "three64_component", text="Component")
 	op = row2.operator("three64.add_selected_component", text="", icon="ADD")
@@ -616,6 +624,14 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 				row1.operator("three64.mark_double_sided", text="Toggle Double-Sided", icon=ds_icon)
 			except Exception:
 				row1.operator("three64.mark_double_sided", text="Toggle Double-Sided", icon="CHECKBOX_DEHLT")
+			# Collider authoring
+			rowc = layout.row(align=True)
+			rowc.operator("three64.mark_collider", text="Set Collider", icon="MOD_PHYSICS")
+			try:
+				opc = rowc.operator("three64.mark_collider", text="", icon="X")
+				opc.clear = True
+			except Exception:
+				pass
 
 			row3 = layout.row(align=True)
 			row3.prop(obj, "three64_component", text="Component")
@@ -893,6 +909,95 @@ class THREE64_OT_mark_double_sided(bpy.types.Operator):
 			return {"FINISHED"}
 		except Exception:
 			self.report({"ERROR"}, "Failed to set doubleSided property")
+			return {"CANCELLED"}
+
+
+class THREE64_OT_mark_collider(bpy.types.Operator):
+	bl_idname = "three64.mark_collider"
+	bl_label = "Set Collider"
+	bl_description = "Set collider userData (collider='convex') and optional physics.mergeChildren / physics.visible"
+	bl_options = {"REGISTER", "UNDO"}
+
+	shape: bpy.props.EnumProperty(
+		name="Shape",
+		description="Collider shape to mark in userData",
+		items=(
+			("convex", "Convex", "Convex hull collider"),
+		),
+		default="convex",
+	)
+	merge_children: bpy.props.BoolProperty(
+		name="Merge Children",
+		description="Merge child meshes into a single convex collider",
+		default=True,
+	)
+	visible: bpy.props.BoolProperty(
+		name="Visible (Debug)",
+		description="Show generated collider mesh at runtime for debugging",
+		default=False,
+	)
+	clear: bpy.props.BoolProperty(
+		name="Clear Collider Props",
+		description="Remove collider and physics.* properties from this object",
+		default=False,
+	)
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def invoke(self, context: "bpy.types.Context", event):
+		# Try to seed defaults from current object properties
+		try:
+			obj = context.object
+			if isinstance(obj.get("physics.mergeChildren", None), (bool, int)):
+				self.merge_children = bool(obj.get("physics.mergeChildren"))
+			if isinstance(obj.get("physics.visible", None), (bool, int)):
+				self.visible = bool(obj.get("physics.visible"))
+			shape_val = obj.get("collider", None) or obj.get("physics.collider", None) or obj.get("physics.collision", None)
+			if isinstance(shape_val, str) and shape_val.lower() in ("convex",):
+				self.shape = shape_val.lower()
+		except Exception:
+			pass
+		return context.window_manager.invoke_props_dialog(self)
+
+	def execute(self, context: "bpy.types.Context"):
+		try:
+			obj = context.object
+			if self.clear:
+				for key in ("collider", "collision", "physics.collider", "physics.collision", "physics.visible", "physics.mergeChildren"):
+					try:
+						if key in obj:
+							del obj[key]
+					except Exception:
+						pass
+				self.report({"INFO"}, f"Cleared collider userData on '{obj.name}'")
+				return {"FINISHED"}
+
+			# Set collider and optional flags
+			obj["collider"] = str(self.shape or "convex")
+			try:
+				ui = obj.id_properties_ui("collider")
+				ui.update(description="Three64 collider type (e.g., 'convex')")
+			except Exception:
+				pass
+			obj["physics.mergeChildren"] = bool(self.merge_children)
+			try:
+				ui2 = obj.id_properties_ui("physics.mergeChildren")
+				ui2.update(description="Merge child meshes into one convex collider at runtime")
+			except Exception:
+				pass
+			obj["physics.visible"] = bool(self.visible)
+			try:
+				ui3 = obj.id_properties_ui("physics.visible")
+				ui3.update(description="Show generated collider mesh at runtime (debug)")
+			except Exception:
+				pass
+
+			self.report({"INFO"}, f"Set collider='{self.shape}', mergeChildren={self.merge_children}, visible={self.visible} on '{obj.name}'")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to set collider userData")
 			return {"CANCELLED"}
 
 
