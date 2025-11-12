@@ -1,0 +1,44 @@
+.stat-wrapper {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  font-family: monospace;
+  color: #cfe9ff;
+  pointer-events: auto;
+}
+.stat-title {
+  font-size: 11px;
+  margin-bottom: 4px;
+  opacity: 0.9;
+}
+.stat-bar {
+  position: relative;
+  width: 220px;
+  height: 18px;
+  background: rgba(20, 32, 52, 0.85);
+  border: 1px solid #22394f;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.6);
+}
+.stat-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #2f8c3f, #3c3);
+  transition: width 140ms ease-out;
+}
+.stat-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.8);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+
