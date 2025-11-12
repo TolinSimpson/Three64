@@ -644,24 +644,6 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 										box.prop(obj, f'["{prop_name}"]', text=pkey)
 								else:
 									box.prop(obj, f'["{prop_name}"]', text=pkey)
-								elif _is_enum_key(comp_name, pkey):
-									try:
-										opts = _enum_options(comp_name, pkey)
-										pid = _sanitize_pid(f"{comp_name}__{pkey}_{idx}")
-										_ensure_enum_runtime_property(pid)
-										# seed options + target + value
-										obj[f"three64_enum_opts__{pid}"] = json.dumps(opts)
-										obj[f"three64_enum_target__{pid}"] = prop_name
-										cur = obj.get(prop_name, "")
-										if not isinstance(cur, str) or cur == "":
-											cur = opts[0] if opts else ""
-											obj[prop_name] = cur
-										setattr(obj, f"three64_enum_{pid}", cur)
-										box.prop(obj, f"three64_enum_{pid}", text=pkey)
-									except Exception:
-										box.prop(obj, f'["{prop_name}"]', text=pkey)
-								else:
-									box.prop(obj, f'["{prop_name}"]', text=pkey)
 							except Exception:
 								pass
 			except Exception:
