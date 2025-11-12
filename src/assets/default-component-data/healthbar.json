@@ -1,0 +1,9 @@
+{
+  "type": "Healthbar",
+  "params": {
+    "maxHealth": 100,
+    "currentHealth": 100,
+    "showDemo": true
+  },
+  "paramDescriptions": []
+}
