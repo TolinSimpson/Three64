@@ -8,6 +8,8 @@ import { loadJSON } from "./io.js";
 import LoadingScreen from "./loadingScreen.js";
 import { EventSystem } from "./eventSystem.js";
 import { Player } from "./player.js";
+import { UISystem } from "./uiSystem.js";
+import { HealthbarComponent } from "./healthbarComponent.js";
 import "./navmesh.js";
 export const config = {
   expansionPak: true,
@@ -49,7 +51,7 @@ export const config = {
       requireTileMultiple: 8,
     },
   },
-  devMode: true,
+  devMode: (typeof __DEV__ !== 'undefined') ? __DEV__ : false,
 };
 
 // EngineLimits removed; prefer reading from config directly
@@ -138,11 +140,23 @@ export function createApp() {
   // Input + Events
   app.eventSystem = new EventSystem({ fixedTimestep: 1 / 60, dom: canvas });
 
+  // UI System
+  app.ui = new UISystem(app);
+  try { app.ui.init(); } catch (e) { console.warn("UISystem init failed:", e); }
+
   // Create player component bound to the camera rig
   if (config.createDefaultPlayer) {
     const player = new Player({ game: app, object: playerRig, options: {}, propName: "Player" });
     try { player.Initialize?.(); } catch (e) { console.error("Player.Initialize failed:", e); }
     app.componentInstances.push(player);
+  }
+  // Demo UI component: Healthbar (example)
+  try {
+    const hb = new HealthbarComponent({ game: app, object: null, options: HealthbarComponent.getDefaultParams(), propName: "Healthbar" });
+    hb.Initialize?.();
+    app.componentInstances.push(hb);
+  } catch (e) {
+    console.warn("HealthbarComponent failed to initialize:", e);
   }
 
   // Phase dispatchers
@@ -167,6 +181,7 @@ export function createApp() {
   app.eventSystem.on('update', (dt) => {
     runPhase('Update', dt);
     app._runUpdaters(dt);
+    try { app.ui?.update(dt); } catch {}
   });
   app.eventSystem.on('late', (dt) => {
     runPhase('LateUpdate', dt);
