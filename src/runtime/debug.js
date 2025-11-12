@@ -83,7 +83,7 @@ export async function initDebugOverlay(game) {
   Debug.config = config;
   if (!Debug.config?.devMode) return;
 
-  ensureOverlayHTMLInline();
+  await ensureOverlayHTMLInline(game);
   wireElements();
   applyURLFlags();
   installKeyHandlers(game);
@@ -172,8 +172,31 @@ function applyColliders(game, enabled) {
   } catch {}
 }
 
-function ensureOverlayHTMLInline() {
+async function ensureOverlayHTMLInline(game) {
   if (document.getElementById('debug-overlay')) return;
+  const ui = game?.ui || window.__game?.ui;
+  if (ui && typeof ui.loadStylesheet === 'function' && typeof ui.loadPageIntoLayer === 'function') {
+    try {
+      await ui.loadStylesheet('debug.css');
+      await ui.loadPageIntoLayer('debug', 'debug-overlay.html');
+      setTimeout(() => {
+        const docsBtn = document.getElementById('open-docs-btn');
+        if (docsBtn) {
+          docsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            try {
+              const target = 'docs/help.html';
+              window.open(target, '_blank', 'noopener,noreferrer');
+            } catch {
+              window.open('docs/help.html', '_blank', 'noopener,noreferrer');
+            }
+          });
+        }
+      }, 0);
+      return;
+    } catch {}
+  }
+  // Fallback if UISystem is unavailable
   const wrapper = document.createElement('div');
   wrapper.id = 'debug-overlay';
   wrapper.style.position = 'absolute';
@@ -183,7 +206,6 @@ function ensureOverlayHTMLInline() {
   wrapper.style.pointerEvents = 'none';
   wrapper.style.zIndex = '1000';
   wrapper.style.display = 'none';
-
   const hud = document.createElement('div');
   hud.id = 'hud-overlay';
   hud.style.pointerEvents = 'auto';
@@ -214,33 +236,6 @@ function ensureOverlayHTMLInline() {
     row.appendChild(s);
   });
   hud.appendChild(row);
-
-  // Docs button (dev only; overlay is only created in devMode)
-  const docsRow = document.createElement('div');
-  docsRow.style.marginTop = '6px';
-  const docsBtn = document.createElement('button');
-  docsBtn.textContent = 'Open Docs';
-  docsBtn.style.pointerEvents = 'auto';
-  docsBtn.style.background = '#1e1e1e';
-  docsBtn.style.color = '#9cf';
-  docsBtn.style.border = '1px solid #334';
-  docsBtn.style.padding = '4px 8px';
-  docsBtn.style.cursor = 'pointer';
-  docsBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    try {
-      const url = new URL(window.location.href);
-      // Resolve relative to /public/ so it works with file:// and http
-      // If served from public/index.html, 'docs/help.html' is a sibling path.
-      const target = 'docs/help.html';
-      window.open(target, '_blank', 'noopener,noreferrer');
-    } catch {
-      window.open('docs/help.html', '_blank', 'noopener,noreferrer');
-    }
-  });
-  docsRow.appendChild(docsBtn);
-  hud.appendChild(docsRow);
-
   const cli = document.createElement('div');
   cli.id = 'debug-cli';
   cli.style.pointerEvents = 'auto';
@@ -276,7 +271,6 @@ function ensureOverlayHTMLInline() {
   cli.appendChild(tip);
   cli.appendChild(log);
   cli.appendChild(input);
-
   wrapper.appendChild(hud);
   wrapper.appendChild(cli);
   document.body.appendChild(wrapper);

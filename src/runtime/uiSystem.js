@@ -62,7 +62,8 @@ export class UISystem {
   }
 
   async loadPageIntoLayer(layerName, pageFileName) {
-    const layer = this._ensureLayer(layerName || 'hud');
+    const topZ = (String(layerName) === 'debug') ? 1000 : undefined;
+    const layer = this._ensureLayer(layerName || 'hud', topZ ?? 500);
     const url = new URL(`../build/assets/ui/${pageFileName}`, document.baseURI).href;
     let html = '';
     try {

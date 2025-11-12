@@ -1,0 +1,74 @@
+#debug-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+#hud-overlay {
+  pointer-events: auto;
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0,0,0,0.5);
+  color: #9cf;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.hud-row {
+  display: block;
+}
+
+.hud-controls {
+  margin-top: 6px;
+}
+
+#open-docs-btn {
+  pointer-events: auto;
+  background: #1e1e1e;
+  color: #9cf;
+  border: 1px solid #334;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+#debug-cli {
+  pointer-events: auto;
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  width: 360px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.cli-tip {
+  opacity: 0.8;
+  margin-bottom: 4px;
+}
+
+.cli-log {
+  max-height: 140px;
+  overflow: auto;
+  background: rgba(255,255,255,0.05);
+  padding: 4px;
+}
+
+.cli-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  background: #111;
+  color: #9cf;
+  border: 1px solid #334;
+  padding: 4px;
+}
+
+
