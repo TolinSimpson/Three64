@@ -16,6 +16,7 @@ except Exception:
 import os
 import json
 import math
+import re
 
 try:
 	import bmesh  # pyright: ignore[reportMissingImports]
@@ -598,6 +599,60 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 			row3.prop(obj, "three64_component", text="Component")
 			row3.operator("three64.add_selected_component", text="", icon="ADD")
 
+			# Archetypes & Instancing quick authoring
+			layout.separator()
+			boxA = layout.box()
+			boxA.label(text="Archetypes & Instancing", icon="OUTLINER_OB_GROUP_INSTANCE")
+			# Archetype
+			rowA = boxA.row(align=True)
+			try:
+				boxA.prop(obj, '["archetype"]', text="archetype")
+			except Exception:
+				pass
+			rowA = boxA.row(align=True)
+			opA = rowA.operator("three64.set_archetype", text="Set Archetype", icon="ADD")
+			try:
+				opA.archetype = str(obj.get("archetype", ""))
+			except Exception:
+				pass
+			# Overrides
+			rowO = boxA.row(align=True)
+			rowO.operator("three64.add_override", text="Add Override a.*", icon="PLUS")
+			# Traits
+			rowT = boxA.row(align=True)
+			rowT.operator("three64.add_trait", text="Add Trait t.*", icon="PLUS")
+			# Pool
+			try:
+				rowP0 = boxA.row(align=True)
+				if "pool.size" in obj:
+					rowP0.prop(obj, '["pool.size"]', text="pool.size")
+				if "pool.prewarm" in obj:
+					rowP0.prop(obj, '["pool.prewarm"]', text="pool.prewarm")
+			except Exception:
+				pass
+			rowP = boxA.row(align=True)
+			opP = rowP.operator("three64.set_pool", text="Set Pool (size/prewarm)", icon="MOD_PHYSICS")
+			try:
+				opP.size = int(obj.get("pool.size", 0))
+				opP.prewarm = bool(obj.get("pool.prewarm", False))
+			except Exception:
+				pass
+			# Instancing
+			try:
+				rowI0 = boxA.row(align=True)
+				if "instKey" in obj:
+					rowI0.prop(obj, '["instKey"]', text="instKey")
+			except Exception:
+				pass
+			rowI = boxA.row(align=True)
+			opI = rowI.operator("three64.set_inst_key", text="Set instKey", icon="OUTLINER_DATA_EMPTY")
+			try:
+				opI.inst_key = str(obj.get("instKey", ""))
+			except Exception:
+				pass
+			rowI2 = boxA.row(align=True)
+			rowI2.operator("three64.insert_inst_tag", text="Insert [inst=key] in Name", icon="SYNTAX_ON")
+
 			# Grouped display of existing components and their params
 			try:
 				indices = _existing_component_indices(obj)
@@ -1069,6 +1124,12 @@ classes = (
 	THREE64_OT_bake_navmesh_json,
 	THREE64_OT_visualize_navmesh_json,
 	VIEW3D_PT_three64_navmesh,
+	THREE64_OT_set_archetype,
+	THREE64_OT_add_override,
+	THREE64_OT_add_trait,
+	THREE64_OT_set_pool,
+	THREE64_OT_set_inst_key,
+	THREE64_OT_insert_inst_tag,
 )
 def register():
 	for cls in classes:
@@ -1197,5 +1258,236 @@ def unregister():
 		except Exception:
 			pass
 
+
+# -----------------------------
+# Archetype & Instancing authoring operators
+# -----------------------------
+class THREE64_OT_set_archetype(bpy.types.Operator):
+	bl_idname = "three64.set_archetype"
+	bl_label = "Set Archetype"
+	bl_description = "Set userData 'archetype' on this object"
+	bl_options = {"REGISTER", "UNDO"}
+
+	archetype: bpy.props.StringProperty(name="Archetype", description="Prefab name to spawn at runtime", default="")
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def invoke(self, context: "bpy.types.Context", event):
+		return context.window_manager.invoke_props_dialog(self)
+
+	def execute(self, context: "bpy.types.Context"):
+		obj = context.object
+		try:
+			obj["archetype"] = str(self.archetype or "")
+			try:
+				ui = obj.id_properties_ui("archetype")
+				ui.update(description="Three64 prefab name")
+			except Exception:
+				pass
+			self.report({"INFO"}, f"archetype set to '{self.archetype}'")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to set 'archetype'")
+			return {"CANCELLED"}
+
+
+def _parse_value_auto(s: str):
+	try:
+		# Try JSON first
+		return json.loads(s)
+	except Exception:
+		t = s.strip()
+		tlow = t.lower()
+		if tlow in ("true", "false"):
+			return tlow == "true"
+		try:
+			if "." in t:
+				return float(t)
+			return int(t)
+		except Exception:
+			return t
+
+
+class THREE64_OT_add_override(bpy.types.Operator):
+	bl_idname = "three64.add_override"
+	bl_label = "Add Override (a.*)"
+	bl_description = "Add a dotted override key under the 'a.' namespace (e.g., a.health.max)"
+	bl_options = {"REGISTER", "UNDO"}
+
+	key: bpy.props.StringProperty(name="Override Key (without a.)", description="e.g., health.max or move.speed", default="")
+	value: bpy.props.StringProperty(name="Value (JSON/number/bool/string)", description="e.g., 150 or true or \"red\"", default="")
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def invoke(self, context: "bpy.types.Context", event):
+		return context.window_manager.invoke_props_dialog(self)
+
+	def execute(self, context: "bpy.types.Context"):
+		obj = context.object
+		try:
+			k = str(self.key or "").strip()
+			if not k:
+				self.report({"WARNING"}, "Override key is empty")
+				return {"CANCELLED"}
+			full = f"a.{k}"
+			val = _parse_value_auto(self.value or "")
+			obj[full] = val
+			try:
+				ui = obj.id_properties_ui(full)
+				ui.update(description="Three64 archetype override parameter")
+			except Exception:
+				pass
+			self.report({"INFO"}, f"Set {full} = {val}")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to set override")
+			return {"CANCELLED"}
+
+
+class THREE64_OT_add_trait(bpy.types.Operator):
+	bl_idname = "three64.add_trait"
+	bl_label = "Add Trait (t.*)"
+	bl_description = "Add a trait key under 't.' (e.g., t.mortal=true)"
+	bl_options = {"REGISTER", "UNDO"}
+
+	name: bpy.props.StringProperty(name="Trait Name (without t.)", description="e.g., mortal or shoots", default="")
+	value: bpy.props.StringProperty(name="Value (bool/number/string)", description="true/false or number or string", default="true")
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def invoke(self, context: "bpy.types.Context", event):
+		return context.window_manager.invoke_props_dialog(self)
+
+	def execute(self, context: "bpy.types.Context"):
+		obj = context.object
+		try:
+			n = str(self.name or "").strip()
+			if not n:
+				self.report({"WARNING"}, "Trait name is empty")
+				return {"CANCELLED"}
+			full = f"t.{n}"
+			val = _parse_value_auto(self.value or "true")
+			obj[full] = val
+			try:
+				ui = obj.id_properties_ui(full)
+				ui.update(description="Three64 archetype trait")
+			except Exception:
+				pass
+			self.report({"INFO"}, f"Set {full} = {val}")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to add trait")
+			return {"CANCELLED"}
+
+
+class THREE64_OT_set_pool(bpy.types.Operator):
+	bl_idname = "three64.set_pool"
+	bl_label = "Set Pool"
+	bl_description = "Set pool.size and pool.prewarm on this object"
+	bl_options = {"REGISTER", "UNDO"}
+
+	size: bpy.props.IntProperty(name="pool.size", description="Number of instances to pre-create for this archetype", default=0, min=0)
+	prewarm: bpy.props.BoolProperty(name="pool.prewarm", description="Request prewarm at scene load", default=True)
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def invoke(self, context: "bpy.types.Context", event):
+		return context.window_manager.invoke_props_dialog(self)
+
+	def execute(self, context: "bpy.types.Context"):
+		obj = context.object
+		try:
+			obj["pool.size"] = int(self.size)
+			obj["pool.prewarm"] = bool(self.prewarm)
+			try:
+				ui = obj.id_properties_ui("pool.size")
+				ui.update(description="Three64 pool size hint")
+			except Exception:
+				pass
+			try:
+				ui2 = obj.id_properties_ui("pool.prewarm")
+				ui2.update(description="Three64 pool prewarm hint")
+			except Exception:
+				pass
+			self.report({"INFO"}, f"Set pool.size={self.size}, pool.prewarm={self.prewarm}")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to set pool.*")
+			return {"CANCELLED"}
+
+
+class THREE64_OT_set_inst_key(bpy.types.Operator):
+	bl_idname = "three64.set_inst_key"
+	bl_label = "Set instKey"
+	bl_description = "Set userData 'instKey' for static instancing"
+	bl_options = {"REGISTER", "UNDO"}
+
+	inst_key: bpy.props.StringProperty(name="instKey", description="Key used to group into InstancedMesh", default="")
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def invoke(self, context: "bpy.types.Context", event):
+		return context.window_manager.invoke_props_dialog(self)
+
+	def execute(self, context: "bpy.types.Context"):
+		obj = context.object
+		try:
+			obj["instKey"] = str(self.inst_key or "")
+			try:
+				ui = obj.id_properties_ui("instKey")
+				ui.update(description="Three64 instancing key")
+			except Exception:
+				pass
+			self.report({"INFO"}, f"instKey set to '{self.inst_key}'")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to set instKey")
+			return {"CANCELLED"}
+
+
+class THREE64_OT_insert_inst_tag(bpy.types.Operator):
+	bl_idname = "three64.insert_inst_tag"
+	bl_label = "Insert [inst=key] Tag"
+	bl_description = "Insert or replace the [inst=key] tag in the object's name"
+	bl_options = {"REGISTER", "UNDO"}
+
+	key: bpy.props.StringProperty(name="inst key", description="Key to embed as [inst=key] in the name", default="")
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def invoke(self, context: "bpy.types.Context", event):
+		# Seed with current instKey if present
+		try:
+			obj = context.object
+			self.key = str(obj.get("instKey", ""))
+		except Exception:
+			pass
+		return context.window_manager.invoke_props_dialog(self)
+
+	def execute(self, context: "bpy.types.Context"):
+		obj = context.object
+		try:
+			name = obj.name or ""
+			# Remove existing [inst=...] tag
+			name = re.sub(r"\s*\[inst\s*=\s*[^]]+\]\s*", " ", name).strip()
+			tag = f"[inst={self.key}] " if self.key else ""
+			obj.name = (tag + name).strip()
+			self.report({"INFO"}, f"Object renamed to '{obj.name}'")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to insert name tag")
+			return {"CANCELLED"}
 
 

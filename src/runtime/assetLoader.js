@@ -7,14 +7,17 @@ import {
   NearestFilter,
   Box3,
   Vector3,
+  Quaternion,
   DirectionalLight,
   AmbientLight,
   DoubleSide,
+  Matrix4,
+  InstancedMesh,
 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { fitsInTMEM, config } from "./engine.js";
 import { BudgetTracker } from "./debug.js";
-import { ComponentRegistry } from "./component.js";
+import { ArchetypeRegistry } from "./component.js";
 import { loadJSON } from "./io.js";
 import { Scene } from "./scene.js";
 
@@ -261,6 +264,8 @@ export class SceneLoader {
         this._applyPhysicsFromUserData(root);
         // Instantiate components from userData
         await this._instantiateFromUserData(root, baseUrl);
+        // Instancing pass (optional)
+        try { this._buildInstancedMeshes(root); } catch {}
         // If GLTF root carries scene-level mappings, instantiate them
         const sceneMapping = this._extractSceneMappingFromRoot(root);
         if (sceneMapping) {
@@ -362,6 +367,8 @@ export class SceneLoader {
         this._applyPhysicsFromUserData(root);
         // Instantiate components from userData
         await this._instantiateFromUserData(root, baseUrl);
+        // Instancing pass (optional)
+        try { this._buildInstancedMeshes(root); } catch {}
         // Scene-level mappings on GLTF root
         const sceneMapping = this._extractSceneMappingFromRoot(root);
         if (sceneMapping) {
@@ -404,20 +411,7 @@ export class SceneLoader {
 
   async _instantiateFromUserData(root, baseUrl) {
     if (!root) return;
-    this._componentPresetCache = this._componentPresetCache || new Map();
     const normalize = (s) => String(s || "").replace(/[\s\-_]/g, "").toLowerCase();
-    const mergeDeep = (target, source) => {
-      if (!source || typeof source !== "object") return target;
-      const out = Array.isArray(target) ? target.slice() : { ...(target || {}) };
-      for (const [k, v] of Object.entries(source)) {
-        if (v && typeof v === "object" && !Array.isArray(v)) {
-          out[k] = mergeDeep(out[k] && typeof out[k] === "object" ? out[k] : {}, v);
-        } else {
-          out[k] = v;
-        }
-      }
-      return out;
-    };
     const expandDotted = (flat) => {
       if (!flat || typeof flat !== "object" || Array.isArray(flat)) return flat;
       const out = {};
@@ -426,7 +420,7 @@ export class SceneLoader {
         if (!segments.length) return;
         const [headRaw, ...rest] = segments;
         const headLower = String(headRaw).toLowerCase();
-        const idxFromAxis = axisToIndex.hasOwnProperty(headLower) ? axisToIndex[headLower] : null;
+        const idxFromAxis = Object.prototype.hasOwnProperty.call(axisToIndex, headLower) ? axisToIndex[headLower] : null;
         const isNumericIndex = /^\d+$/.test(headRaw);
         if (rest.length === 0) {
           if (isNumericIndex || idxFromAxis !== null) {
@@ -437,7 +431,6 @@ export class SceneLoader {
             return arr;
           }
           if (Array.isArray(obj)) {
-            // Cannot set named key on array; convert to object wrapper
             const o = {};
             for (let i = 0; i < obj.length; i++) o[i] = obj[i];
             o[headRaw] = value;
@@ -446,7 +439,6 @@ export class SceneLoader {
           obj[headRaw] = value;
           return obj;
         }
-        // Need to descend
         let nextContainer;
         if (isNumericIndex || idxFromAxis !== null) {
           const idx = isNumericIndex ? parseInt(headRaw, 10) : idxFromAxis;
@@ -466,9 +458,7 @@ export class SceneLoader {
       for (const [k, v] of Object.entries(flat)) {
         const segs = String(k).split(".");
         const updated = setPath(out, segs, v);
-        // setPath returns updated container when the root becomes array
         if (Array.isArray(updated)) {
-          // If root became an array, merge back into object by numeric keys
           for (let i = 0; i < updated.length; i++) {
             if (updated[i] !== undefined) out[i] = updated[i];
           }
@@ -476,63 +466,133 @@ export class SceneLoader {
       }
       return out;
     };
-    const getDefaultsForType = async (type) => {
-      const key = normalize(type);
-      if (this._componentPresetCache.has(key)) return this._componentPresetCache.get(key);
-      let defaults = {};
-      const C = ComponentRegistry.get(type);
-      try {
-        if (C && typeof C.getDefaultParams === "function") {
-          const d = C.getDefaultParams();
-          if (d && typeof d === "object") defaults = d;
-        } else if (C && C.defaultParams && typeof C.defaultParams === "object") {
-          defaults = C.defaultParams;
+    // Collect spawn requests and optional pool prewarm instructions
+    const spawnRequests = [];
+    const prewarm = new Map(); // archetype -> { size, overrides, traits }
+    const nameInstRegex = /\[inst\s*=\s*([^\]\s]+)\]/i;
+    root.updateWorldMatrix(true, true);
+    root.traverse((obj) => {
+      const ud = obj.userData || {};
+      const name = obj.name || "";
+      const archetype = ud.archetype || ud.Archetype || null;
+      // overrides under a.*
+      const overrideFlat = {};
+      for (const [k, v] of Object.entries(ud)) {
+        if (k.startsWith("a.")) {
+          overrideFlat[k.substring(2)] = v;
         }
+      }
+      const overrides = expandDotted(overrideFlat);
+      // traits under t.*
+      const traits = {};
+      for (const [k, v] of Object.entries(ud)) {
+        if (k.startsWith("t.")) {
+          const tk = k.substring(2);
+          traits[tk] = v === true || v === "true" || v === 1 || v === "1" ? true : v;
+        }
+      }
+      // pooling under pool.*
+      const poolCfg = {};
+      for (const [k, v] of Object.entries(ud)) {
+        if (k.startsWith("pool.")) {
+          poolCfg[k.substring(5)] = v;
+        }
+      }
+      if (poolCfg.prewarm === true || poolCfg.prewarm === "true") {
+        const size = Number(poolCfg.size || poolCfg.count || 0) | 0;
+        const key = String(archetype || "");
+        if (key) {
+          const existing = prewarm.get(key) || { size: 0, overrides: {}, traits: {} };
+          existing.size = Math.max(existing.size, size);
+          existing.overrides = overrides || existing.overrides;
+          existing.traits = traits || existing.traits;
+          prewarm.set(key, existing);
+        }
+      }
+      // instancing key
+      const instKey = ud.instKey || (() => {
+        const m = name.match(nameInstRegex);
+        return m && m[1] ? m[1] : null;
+      })();
+      if (archetype) {
+        spawnRequests.push({ obj, archetype, overrides, traits, poolCfg });
+        // Use placeholder purely as a marker
+        try { obj.visible = false; } catch {}
+      } else if (instKey) {
+        // Flag for instancing pass by tagging userData
+        try { obj.userData.__instKey = String(instKey); } catch {}
+      }
+    });
+    // Prewarm
+    for (const [key, info] of prewarm.entries()) {
+      if (!key || !info || !info.size) continue;
+      try { this.game.pool.prewarm(key, info.size, { overrides: info.overrides, traits: info.traits }); } catch {}
+    }
+    // Spawn
+    const tmpPos = new Vector3();
+    const tmpQuat = new Quaternion();
+    const tmpScale = new Vector3();
+    const tmpMat = new Matrix4();
+    for (const req of spawnRequests) {
+      const inst = this.game.pool.obtain(req.archetype, { overrides: req.overrides, traits: req.traits });
+      if (!inst) { console.warn("Archetype not found:", req.archetype); continue; }
+      // Place at placeholder world transform
+      try {
+        req.obj.updateWorldMatrix(true, true);
+        tmpMat.copy(req.obj.matrixWorld);
+        tmpMat.decompose(tmpPos, tmpQuat, tmpScale);
+        inst.position.copy(tmpPos);
+        inst.quaternion.copy(tmpQuat);
+        inst.scale.copy(tmpScale);
+        inst.updateMatrix();
+        inst.matrixAutoUpdate = false;
       } catch {}
-      // Fallback: try loading generated preset JSON
-      if (!defaults || typeof defaults !== "object" || Object.keys(defaults).length === 0) {
+      try { this.game.rendererCore.scene.add(inst); } catch {}
+    }
+  }
+
+  _buildInstancedMeshes(root) {
+    if (!root) return;
+    const groups = new Map(); // key -> { geo, mat, items: [] }
+    const tmpMatrix = new Matrix4();
+    const isColliderName = (n) => /^(COL_|UCX_|UBX_)/i.test(String(n || ""));
+    root.updateWorldMatrix(true, true);
+    root.traverse((o) => {
+      if (!o || !o.isMesh) return;
+      const ud = o.userData || {};
+      const instKey = ud.__instKey || null;
+      if (!instKey) return;
+      // Skip if looks like a collider or has physics config
+      if (isColliderName(o.name)) return;
+      if (ud.physics || ud["physics.collider"] || ud["physics.rigidbody"]) return;
+      const geo = o.geometry;
+      const mat = o.material;
+      if (!geo || !mat) return;
+      const key = `${instKey}|${geo.uuid}|${Array.isArray(mat) ? mat.map(m => m.uuid).join(",") : mat.uuid}`;
+      if (!groups.has(key)) groups.set(key, { geo, mat, items: [] });
+      groups.get(key).items.push(o);
+    });
+    for (const [key, g] of groups.entries()) {
+      const items = g.items || [];
+      if (items.length <= 1) continue;
+      // Create instanced mesh at scene root; bake world matrices per instance
+      const count = items.length;
+      const instanced = new InstancedMesh(g.geo, g.mat, count);
+      for (let i = 0; i < count; i++) {
+        const mesh = items[i];
+        mesh.updateWorldMatrix(true, false);
+        tmpMatrix.copy(mesh.matrixWorld);
+        instanced.setMatrixAt(i, tmpMatrix);
+      }
+      try { instanced.instanceMatrix.needsUpdate = true; } catch {}
+      try { this.game.rendererCore.scene.add(instanced); } catch {}
+      // Hide/remove originals
+      for (const mesh of items) {
         try {
-          const urlBase = baseUrl || new URL("build/assets/", document.baseURI).href;
-          const presetUrl = new URL(`component-data/${key}.json`, urlBase).toString();
-          const preset = await loadJSON(presetUrl);
-          const params = preset?.params;
-          if (params && typeof params === "object") defaults = params;
+          if (mesh.parent) mesh.parent.remove(mesh);
+          else mesh.visible = false;
         } catch {}
       }
-      this._componentPresetCache.set(key, defaults || {});
-      return defaults || {};
-    };
-    const queue = [];
-    root.traverse((obj) => {
-      const defs = this._extractComponentsFromUserData(obj.userData || {});
-      if (!defs || !defs.length) return;
-      for (const def of defs) queue.push({ obj, def });
-    });
-    for (const { obj, def } of queue) {
-      const C = ComponentRegistry.get(def.type);
-      if (!C) { console.warn("Unknown component:", def.type, "on", obj.name); continue; }
-      const defaults = await getDefaultsForType(def.type);
-      const merged = mergeDeep(defaults || {}, def.params || {});
-      let instance = null;
-      try {
-        instance = new C({ game: this.game, object: obj, options: merged, propName: def.type });
-      } catch (e) {
-        try {
-          instance = C?.({ game: this.game, object: obj, options: merged, propName: def.type });
-        } catch (e2) {
-          console.warn("Failed to create component instance:", def.type, e2);
-        }
-      }
-      if (!instance) continue;
-      try {
-        if (typeof instance.Initialize === "function") instance.Initialize(this.game, obj, merged);
-      } catch (e) {
-        console.warn("Component Initialize() threw:", def.type, e);
-      }
-      instance.__typeName = def.type;
-      obj.__components = obj.__components || [];
-      obj.__components.push(instance);
-      this.game.componentInstances.push(instance);
     }
   }
 

@@ -1,0 +1,164 @@
+{
+  "type": "Volume",
+  "params": {
+    "enabled": true,
+    "shape": "box",
+    "size": [
+      1,
+      1,
+      1
+    ],
+    "radius": 1,
+    "phase": "update",
+    "intervalSeconds": 0,
+    "target": {
+      "mode": "scene",
+      "property": "",
+      "names": [],
+      "onlyMeshes": true
+    },
+    "filters": {
+      "nameEquals": "",
+      "nameIncludes": "",
+      "hasComponent": "",
+      "userDataMatch": {}
+    },
+    "events": {
+      "onEnter": "VolumeEnter",
+      "onExit": "VolumeExit",
+      "onStay": ""
+    },
+    "includePayloadObjectRef": false
+  },
+  "paramDescriptions": [
+    {
+      "key": "enabled",
+      "label": "Enabled",
+      "type": "boolean",
+      "description": "Enable/disable the trigger volume."
+    },
+    {
+      "key": "shape",
+      "label": "Shape",
+      "type": "enum",
+      "options": [
+        "box",
+        "sphere"
+      ],
+      "description": "Bounding shape to use for tests."
+    },
+    {
+      "key": "size",
+      "label": "Box Size [x,y,z]",
+      "type": "vec3",
+      "description": "Local-space size for box volume, centered on object origin."
+    },
+    {
+      "key": "radius",
+      "label": "Sphere Radius",
+      "type": "number",
+      "min": 0.01,
+      "max": 1000,
+      "step": 0.01,
+      "description": "Radius for sphere volume."
+    },
+    {
+      "key": "phase",
+      "label": "Phase",
+      "type": "enum",
+      "options": [
+        "input",
+        "fixed",
+        "update",
+        "late"
+      ],
+      "description": "Game loop phase to evaluate the volume."
+    },
+    {
+      "key": "intervalSeconds",
+      "label": "Interval (s)",
+      "type": "number",
+      "min": 0,
+      "max": 10,
+      "step": 0.01,
+      "description": "Evaluate no more often than every N seconds (0 = each frame)."
+    },
+    {
+      "key": "target.mode",
+      "label": "Target Mode",
+      "type": "enum",
+      "options": [
+        "scene",
+        "property",
+        "names"
+      ],
+      "description": "How to collect candidates to test."
+    },
+    {
+      "key": "target.property",
+      "label": "Scene Property Name",
+      "type": "string",
+      "description": "When mode=property, use this scene property to resolve objects."
+    },
+    {
+      "key": "target.names",
+      "label": "Target Names []",
+      "type": "string",
+      "description": "JSON array of exact object names when mode=names."
+    },
+    {
+      "key": "target.onlyMeshes",
+      "label": "Only Meshes",
+      "type": "boolean",
+      "description": "When mode=scene, include only mesh nodes."
+    },
+    {
+      "key": "filters.nameEquals",
+      "label": "Filter: Name Equals",
+      "type": "string",
+      "description": "Exact name match."
+    },
+    {
+      "key": "filters.nameIncludes",
+      "label": "Filter: Name Includes",
+      "type": "string",
+      "description": "Substring of object name."
+    },
+    {
+      "key": "filters.hasComponent",
+      "label": "Filter: Has Component",
+      "type": "string",
+      "description": "Require a component on the object (string or JSON array)."
+    },
+    {
+      "key": "filters.userDataMatch",
+      "label": "Filter: userData Match",
+      "type": "object",
+      "description": "Key/value pairs to match against object.userData."
+    },
+    {
+      "key": "events.onEnter",
+      "label": "Event: On Enter",
+      "type": "string",
+      "description": "Event name when an object enters the volume."
+    },
+    {
+      "key": "events.onExit",
+      "label": "Event: On Exit",
+      "type": "string",
+      "description": "Event name when an object exits the volume."
+    },
+    {
+      "key": "events.onStay",
+      "label": "Event: On Stay",
+      "type": "string",
+      "description": "Event name fired each evaluation while an object remains inside."
+    },
+    {
+      "key": "includePayloadObjectRef",
+      "label": "Include Object Ref",
+      "type": "boolean",
+      "description": "Include raw object in event payload."
+    }
+  ]
+}

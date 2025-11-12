@@ -138,3 +138,61 @@ export const ComponentRegistry = (() => {
     }
   };
 })();
+
+// Archetype registry for prefab-style authoring
+export const ArchetypeRegistry = (() => {
+  const map = new Map();
+  const normalize = (s) => String(s || "").replace(/[\s\-_]/g, "").toLowerCase();
+  const deepMerge = (a, b) => {
+    if (!b || typeof b !== "object") return a || {};
+    const out = Array.isArray(a) ? a.slice() : { ...(a || {}) };
+    for (const [k, v] of Object.entries(b)) {
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        out[k] = deepMerge(out[k] && typeof out[k] === "object" ? out[k] : {}, v);
+      } else {
+        out[k] = v;
+      }
+    }
+    return out;
+  };
+  return {
+    register(name, defOrFactory) {
+      if (!name) return;
+      map.set(String(name), defOrFactory);
+    },
+    get(name) {
+      if (!name) return undefined;
+      const key = String(name);
+      const direct = map.get(key);
+      if (direct) return direct;
+      const target = normalize(key);
+      for (const [k, v] of map.entries()) {
+        if (normalize(k) === target) return v;
+      }
+      return undefined;
+    },
+    list() {
+      return Array.from(map.keys());
+    },
+    create(game, name, { overrides = {}, traits = {} } = {}) {
+      const entry = this.get(name);
+      if (!entry) return null;
+      try {
+        // Entry may be:
+        // - factory: (game, { overrides, traits }) => Object3D
+        // - object: { defaults, create(game, params, traits) }
+        if (typeof entry === "function") {
+          return entry(game, { overrides, traits });
+        }
+        const defaults = (entry && typeof entry.defaults === "object") ? entry.defaults : {};
+        const params = deepMerge(defaults, overrides || {});
+        if (entry && typeof entry.create === "function") {
+          return entry.create(game, params, traits || {});
+        }
+      } catch (e) {
+        try { console.warn("Archetype create failed:", name, e); } catch {}
+      }
+      return null;
+    }
+  };
+})();

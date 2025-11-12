@@ -9,7 +9,9 @@ import LoadingScreen from "./loadingScreen.js";
 import { EventSystem } from "./eventSystem.js";
 import { Player } from "./player.js";
 import { UISystem } from "./uiSystem.js";
-import { HealthbarComponent } from "./healthbarComponent.js";
+import { Statistic } from "./statistic.js";
+import { StatisticBar } from "./statisticBar.js";
+import { ArchetypeRegistry } from "./component.js";
 import "./navmesh.js";
 import "./raycaster.js";
 import "./volume.js";
@@ -98,7 +100,60 @@ let frameIntervalMs = 1000 / 60;
 let lastStepTime = performance.now();
 let app;
 
-export function createApp() {
+// -----------------------------
+// Pool manager for archetype-driven spawning
+// -----------------------------
+class PoolManager {
+  constructor(game) {
+    this.game = game;
+    this._pools = new Map(); // name -> { idle: Object3D[] }
+  }
+  _getPool(name) {
+    const key = String(name);
+    if (!this._pools.has(key)) this._pools.set(key, { idle: [] });
+    return this._pools.get(key);
+  }
+  prewarm(name, count = 0, opts = undefined) {
+    const n = Math.max(0, count | 0);
+    const pool = this._getPool(name);
+    const entry = ArchetypeRegistry.get(name);
+    for (let i = 0; i < n; i++) {
+      const obj = ArchetypeRegistry.create(this.game, name, { overrides: opts?.overrides || {}, traits: opts?.traits || {} });
+      if (!obj) continue;
+      try { obj.visible = false; } catch {}
+      try { obj.userData = obj.userData || {}; obj.userData.__pooled = true; } catch {}
+      pool.idle.push(obj);
+    }
+  }
+  obtain(name, { overrides = {}, traits = {} } = {}) {
+    const pool = this._getPool(name);
+    let obj = pool.idle.pop();
+    if (!obj) {
+      obj = ArchetypeRegistry.create(this.game, name, { overrides, traits });
+    }
+    if (!obj) return null;
+    try {
+      obj.visible = true;
+      obj.userData = obj.userData || {};
+      obj.userData.__archetype = name;
+      obj.userData.__traits = traits || {};
+      obj.userData.__overrides = overrides || {};
+    } catch {}
+    return obj;
+  }
+  release(obj) {
+    if (!obj) return;
+    const name = obj?.userData?.__archetype || "unknown";
+    const pool = this._getPool(name);
+    try {
+      if (obj.parent) obj.parent.remove(obj);
+      obj.visible = false;
+    } catch {}
+    pool.idle.push(obj);
+  }
+}
+
+export async function createApp() {
   const canvas = document.getElementById("app-canvas");
   const rendererCore = new RendererCore(canvas);
   const budget = new BudgetTracker();
@@ -123,6 +178,7 @@ export function createApp() {
     errors: Debug.errors,
     toggles: Debug.toggles,
     componentInstances: [],
+    pool: null,
     onUpdate(fn) { if (typeof fn === "function") updaters.push(fn); },
     setWireframe(enabled) {
       rendererCore.scene.traverse((o) => {
@@ -146,19 +202,25 @@ export function createApp() {
   app.ui = new UISystem(app);
   try { app.ui.init(); } catch (e) { console.warn("UISystem init failed:", e); }
 
+  // Pooling
+  app.pool = new PoolManager(app);
+
   // Create player component bound to the camera rig
   if (config.createDefaultPlayer) {
     const player = new Player({ game: app, object: playerRig, options: {}, propName: "Player" });
     try { player.Initialize?.(); } catch (e) { console.error("Player.Initialize failed:", e); }
     app.componentInstances.push(player);
   }
-  // Demo UI component: Healthbar (example)
+  // Initialize generic Statistic + StatisticBar
   try {
-    const hb = new HealthbarComponent({ game: app, object: null, options: HealthbarComponent.getDefaultParams(), propName: "Healthbar" });
-    hb.Initialize?.();
-    app.componentInstances.push(hb);
+    const stat = new Statistic({ game: app, object: null, options: { name: 'health', min: 0, max: 100, current: 100, regenPerSec: 0 }, propName: "Statistic" });
+    stat.Initialize?.();
+    app.componentInstances.push(stat);
+    const bar = new StatisticBar({ game: app, object: null, options: { name: 'health' }, propName: "StatisticBar" });
+    await Promise.resolve(bar.Initialize?.());
+    app.componentInstances.push(bar);
   } catch (e) {
-    console.warn("HealthbarComponent failed to initialize:", e);
+    console.warn("Statistic initialization failed:", e);
   }
 
   // Phase dispatchers

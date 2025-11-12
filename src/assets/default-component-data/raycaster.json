@@ -1,0 +1,191 @@
+{
+  "type": "Raycaster",
+  "params": {
+    "enabled": true,
+    "castPhase": "update",
+    "origin": "screenCenter",
+    "localOffset": [
+      0,
+      0,
+      0
+    ],
+    "maxDistance": 100,
+    "type": "raycast",
+    "rays": 5,
+    "coneAngleDeg": 15,
+    "fanAngleDeg": 30,
+    "maxBounces": 1,
+    "intervalSeconds": 0,
+    "filters": {
+      "nameEquals": "",
+      "nameIncludes": "",
+      "hasComponent": "",
+      "userDataMatch": {}
+    },
+    "events": {
+      "onHit": "RaycastHit",
+      "onMiss": "RaycastMiss",
+      "onFilteredHit": "RaycastFilteredHit",
+      "onEachHit": ""
+    },
+    "includePayloadObjectRef": false
+  },
+  "paramDescriptions": [
+    {
+      "key": "enabled",
+      "label": "Enabled",
+      "type": "boolean",
+      "description": "Enable/disable the raycaster."
+    },
+    {
+      "key": "castPhase",
+      "label": "Cast Phase",
+      "type": "enum",
+      "options": [
+        "input",
+        "fixed",
+        "update",
+        "late"
+      ],
+      "description": "Game loop phase to run casts."
+    },
+    {
+      "key": "origin",
+      "label": "Origin",
+      "type": "enum",
+      "options": [
+        "screenCenter",
+        "mouse",
+        "object"
+      ],
+      "description": "Ray origin mode."
+    },
+    {
+      "key": "localOffset",
+      "label": "Local Offset [x,y,z]",
+      "type": "vec3",
+      "description": "Local-space offset when using object origin."
+    },
+    {
+      "key": "maxDistance",
+      "label": "Max Distance",
+      "type": "number",
+      "min": 0.1,
+      "max": 1000,
+      "step": 0.1,
+      "description": "Maximum ray length."
+    },
+    {
+      "key": "type",
+      "label": "Type",
+      "type": "enum",
+      "options": [
+        "raycast",
+        "intersect",
+        "bounce",
+        "scatter",
+        "fan"
+      ],
+      "description": "Raycast mode."
+    },
+    {
+      "key": "rays",
+      "label": "Rays (scatter/fan)",
+      "type": "number",
+      "min": 1,
+      "max": 128,
+      "step": 1,
+      "description": "Number of rays for scatter/fan."
+    },
+    {
+      "key": "coneAngleDeg",
+      "label": "Cone Angle (scatter)",
+      "type": "number",
+      "min": 0,
+      "max": 180,
+      "step": 1,
+      "description": "Full cone angle for scatter."
+    },
+    {
+      "key": "fanAngleDeg",
+      "label": "Fan Angle (fan)",
+      "type": "number",
+      "min": 0,
+      "max": 180,
+      "step": 1,
+      "description": "Horizontal fan angle for fan mode."
+    },
+    {
+      "key": "maxBounces",
+      "label": "Max Bounces",
+      "type": "number",
+      "min": 0,
+      "max": 16,
+      "step": 1,
+      "description": "Maximum number of reflections for bounce mode."
+    },
+    {
+      "key": "intervalSeconds",
+      "label": "Interval (s)",
+      "type": "number",
+      "min": 0,
+      "max": 10,
+      "step": 0.01,
+      "description": "Fire no more often than every N seconds (0 = every frame)."
+    },
+    {
+      "key": "filters.nameEquals",
+      "label": "Filter: Name Equals",
+      "type": "string",
+      "description": "Exact name match (case-sensitive)."
+    },
+    {
+      "key": "filters.nameIncludes",
+      "label": "Filter: Name Includes",
+      "type": "string",
+      "description": "Substring in object name (case-sensitive)."
+    },
+    {
+      "key": "filters.hasComponent",
+      "label": "Filter: Has Component",
+      "type": "string",
+      "description": "Component name required on hit object (string or JSON array)."
+    },
+    {
+      "key": "filters.userDataMatch",
+      "label": "Filter: userData Match",
+      "type": "object",
+      "description": "Key/value pairs to match against object.userData."
+    },
+    {
+      "key": "events.onHit",
+      "label": "Event: On Hit",
+      "type": "string",
+      "description": "Event name when any hit occurs."
+    },
+    {
+      "key": "events.onMiss",
+      "label": "Event: On Miss",
+      "type": "string",
+      "description": "Event name when no hit occurs."
+    },
+    {
+      "key": "events.onFilteredHit",
+      "label": "Event: On Filtered Hit",
+      "type": "string",
+      "description": "Event name for hits passing filters."
+    },
+    {
+      "key": "events.onEachHit",
+      "label": "Event: On Each Hit",
+      "type": "string",
+      "description": "Event name for each individual hit in multi-ray modes."
+    },
+    {
+      "key": "includePayloadObjectRef",
+      "label": "Include Object Ref",
+      "type": "boolean",
+      "description": "Include raw object reference in payload (use with care)."
+    }
+  ]
+}
