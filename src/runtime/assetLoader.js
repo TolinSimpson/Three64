@@ -257,6 +257,8 @@ export class SceneLoader {
         } catch {}
         // Naming convention processing (LOD, COL_, etc.)
         this._processNamingConventions(root);
+        // Physics via userData/extras or naming conventions
+        this._applyPhysicsFromUserData(root);
         // Instantiate components from userData
         await this._instantiateFromUserData(root, baseUrl);
         // If GLTF root carries scene-level mappings, instantiate them
@@ -356,6 +358,8 @@ export class SceneLoader {
           this.game.loadedGLTFs.push({ url: absUrl, object: root });
         } catch {}
         this._processNamingConventions(root);
+        // Physics via userData/extras or naming conventions
+        this._applyPhysicsFromUserData(root);
         // Instantiate components from userData
         await this._instantiateFromUserData(root, baseUrl);
         // Scene-level mappings on GLTF root
@@ -761,6 +765,75 @@ export class SceneLoader {
     }
     // Fallback: allow top-level keys on root userData
     return ud.properties || ud.components || ud.idScripts || ud.idComponents || null;
+  }
+
+  // -----------------------------
+  // Physics authoring via userData/naming
+  // -----------------------------
+  _applyPhysicsFromUserData(root) {
+    const physics = this.game?.physics;
+    if (!physics || !root) return;
+    const get = (ud, keys) => {
+      for (const k of keys) {
+        if (ud && Object.prototype.hasOwnProperty.call(ud, k)) return ud[k];
+      }
+      return undefined;
+    };
+    const truthy = (v) => v === true || v === "true" || v === 1 || v === "1";
+
+    root.updateWorldMatrix(true, true);
+
+    root.traverse((o) => {
+      const name = o.name || "";
+      const ud = o.userData || {};
+
+      // Name-based collider conventions: COL_* or UCX_/UBX_ like Unreal
+      const nameSaysCollider = /^(COL_|UCX_|UBX_)/i.test(name);
+
+      // Extras-based collider specification
+      const colliderType =
+        get(ud, ["collider", "Collider", "collision", "Collision"]) ||
+        (ud.physics && (ud.physics.collider || ud.physics.collision)) ||
+        ud["physics.collider"] || ud["physics.collision"];
+
+      const colliderEnabled =
+        nameSaysCollider ||
+        truthy(get(ud, ["isCollider", "IsCollider"])) ||
+        truthy(get(ud, ["collision", "Collision"])) ||
+        (typeof colliderType === "string") ||
+        truthy(get(ud, ["collider", "Collider"])) ||
+        truthy(ud?.physics?.collider) ||
+        truthy(ud?.physics?.collision) ||
+        truthy(ud["physics.collider"]) ||
+        truthy(ud["physics.collision"]);
+
+      if (!colliderEnabled) return;
+
+      const typeStr = typeof colliderType === "string" ? String(colliderType).toLowerCase() : "convex";
+      const visible =
+        truthy(get(ud, ["colliderVisible", "collisionVisible"])) ||
+        truthy(ud?.physics?.visible) ||
+        truthy(ud["physics.visible"]) ||
+        false;
+      const mergeChildren =
+        get(ud, ["mergeChildren"]) ?? ud?.physics?.mergeChildren ?? ud["physics.mergeChildren"];
+
+      // Currently we support convex colliders; other types fall back to convex
+      if (typeStr !== "convex") {
+        // Future: support box/sphere/capsule via Ammo native shapes.
+        try { console.warn(`Collider type '${typeStr}' not yet supported; using convex for`, o.name); } catch {}
+      }
+
+      physics.addConvexColliderForObject(o, {
+        mergeChildren: mergeChildren !== false && !nameSaysCollider ? true : false,
+        visible,
+      });
+
+      // Optionally hide explicit collider helper meshes by name
+      if (nameSaysCollider && o.visible) {
+        try { o.visible = !!visible; } catch {}
+      }
+    });
   }
 }
 
