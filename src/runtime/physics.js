@@ -25,6 +25,8 @@ export class PhysicsWorld {
     this.dynamicsWorld = null;
     this._ammo = null; // subsystems
     this._rigidBodies = [];
+    // Track Three.js objects bound to Ammo bodies for simulation sync
+    this._entities = []; // { object, body, shape, type: 'dynamic'|'kinematic'|'static' }
     this._initAmmo(options);
   }
 
@@ -207,10 +209,55 @@ export class PhysicsWorld {
 
   // Step Ammo world if ready
   step(dt) {
-    if (this.ammoReady && this.dynamicsWorld) {
-      const maxSubSteps = 2;
-      const fixedTimeStep = 1 / 60;
-      this.dynamicsWorld.stepSimulation(dt, maxSubSteps, fixedTimeStep);
+    if (!this.ammoReady || !this.dynamicsWorld || !this.Ammo) return;
+    const Ammo = this.Ammo;
+
+    // Push kinematic objects' transforms into Ammo before stepping
+    for (let i = 0; i < this._entities.length; i++) {
+      const ent = this._entities[i];
+      if (!ent || ent.type !== "kinematic") continue;
+      try {
+        const tr = new Ammo.btTransform();
+        tr.setIdentity();
+        ent.object.updateWorldMatrix(true, false);
+        const m = ent.object.matrixWorld;
+        // Extract pos and rot
+        const px = m.elements[12], py = m.elements[13], pz = m.elements[14];
+        // Approximate rotation via object quaternion (preferred) to avoid matrix decomposition here
+        const q = ent.object.getWorldQuaternion?.({ x:0,y:0,z:0,w:1 }) || null;
+        if (q && typeof q.x === "number") {
+          tr.setOrigin(new Ammo.btVector3(px, py, pz));
+          tr.setRotation(new Ammo.btQuaternion(q.x, q.y, q.z, q.w));
+        } else {
+          tr.setOrigin(new Ammo.btVector3(px, py, pz));
+        }
+        ent.body.setWorldTransform(tr);
+      } catch {}
+    }
+
+    const maxSubSteps = 2;
+    const fixedTimeStep = 1 / 60;
+    this.dynamicsWorld.stepSimulation(dt, maxSubSteps, fixedTimeStep);
+
+    // Pull dynamic objects' transforms back into Three after stepping
+    for (let i = 0; i < this._entities.length; i++) {
+      const ent = this._entities[i];
+      if (!ent || ent.type !== "dynamic") continue;
+      try {
+        const ms = ent.body.getMotionState?.();
+        const trans = new Ammo.btTransform();
+        if (ms && ms.getWorldTransform) {
+          ms.getWorldTransform(trans);
+        } else {
+          ent.body.getWorldTransform?.(trans);
+        }
+        const o = trans.getOrigin?.();
+        const r = trans.getRotation?.();
+        if (o && r) {
+          ent.object.position.set(o.x(), o.y(), o.z());
+          ent.object.quaternion.set(r.x(), r.y(), r.z(), r.w());
+        }
+      } catch {}
     }
   }
 
@@ -272,6 +319,147 @@ export class PhysicsWorld {
     const body = new Ammo.btRigidBody(rbInfo);
     this.dynamicsWorld.addRigidBody(body);
     this._rigidBodies.push(body);
+  }
+
+  // --------------------------
+  // Rigid bodies (dynamic/kinematic/static from objects)
+  // --------------------------
+  addRigidBodyForObject(object3D, {
+    shape = "box",
+    type = "dynamic",
+    mass = undefined,
+    friction = undefined,
+    restitution = undefined,
+    linearDamping = undefined,
+    angularDamping = undefined,
+    mergeChildren = true,
+  } = {}) {
+    if (!this.ammoReady || !this.dynamicsWorld || !this.Ammo) return null;
+    const Ammo = this.Ammo;
+
+    const shapeLower = String(shape || "box").toLowerCase();
+    const typeLower = String(type || "dynamic").toLowerCase();
+
+    const shapeObj = this._buildAmmoShapeForObject(object3D, shapeLower, { mergeChildren });
+    if (!shapeObj) return null;
+
+    // Determine mass: 0 for static and kinematic; positive for dynamic (default 1)
+    let rbMass = (typeof mass === "number" ? mass : (typeLower === "dynamic" ? 1 : 0));
+    if (typeLower === "kinematic" && rbMass !== 0) rbMass = 0;
+
+    // Transform from object's world matrix
+    object3D.updateWorldMatrix(true, true);
+    const tr = new Ammo.btTransform();
+    tr.setIdentity();
+    const e = object3D.matrixWorld.elements;
+    const pos = new Ammo.btVector3(e[12], e[13], e[14]);
+    tr.setOrigin(pos);
+    // Use object's quaternion
+    const q = object3D.getWorldQuaternion?.({ x:0,y:0,z:0,w:1 }) || null;
+    if (q && typeof q.x === "number") {
+      tr.setRotation(new Ammo.btQuaternion(q.x, q.y, q.z, q.w));
+    }
+    const motionState = new Ammo.btDefaultMotionState(tr);
+
+    const localInertia = new Ammo.btVector3(0, 0, 0);
+    if (rbMass > 0 && shapeObj.calculateLocalInertia) {
+      shapeObj.calculateLocalInertia(rbMass, localInertia);
+    }
+    const rbInfo = new Ammo.btRigidBodyConstructionInfo(rbMass, motionState, shapeObj, localInertia);
+    const body = new Ammo.btRigidBody(rbInfo);
+
+    if (typeof friction === "number") body.setFriction(friction);
+    if (typeof restitution === "number") body.setRestitution(restitution);
+    if (typeof linearDamping === "number" || typeof angularDamping === "number") {
+      body.setDamping(linearDamping || 0, angularDamping || 0);
+    }
+
+    if (typeLower === "kinematic") {
+      // CF_KINEMATIC_OBJECT = 2, DISABLE_DEACTIVATION = 4
+      body.setCollisionFlags(body.getCollisionFlags() | 2);
+      body.setActivationState(4);
+    }
+
+    this.dynamicsWorld.addRigidBody(body);
+    this._entities.push({ object: object3D, body, shape: shapeObj, type: typeLower });
+    return body;
+  }
+
+  _buildAmmoShapeForObject(object3D, shape, { mergeChildren }) {
+    const Ammo = this.Ammo;
+    try {
+      if (shape === "box") {
+        const { min, max } = this._boundsForObject(object3D);
+        const hx = Math.max(1e-4, (max.x - min.x) / 2);
+        const hy = Math.max(1e-4, (max.y - min.y) / 2);
+        const hz = Math.max(1e-4, (max.z - min.z) / 2);
+        return new Ammo.btBoxShape(new Ammo.btVector3(hx, hy, hz));
+      }
+      if (shape === "sphere") {
+        const { min, max } = this._boundsForObject(object3D);
+        const rx = (max.x - min.x) / 2, ry = (max.y - min.y) / 2, rz = (max.z - min.z) / 2;
+        const radius = Math.max(1e-4, Math.max(rx, ry, rz));
+        return new Ammo.btSphereShape(radius);
+      }
+      if (shape === "capsule") {
+        const { min, max } = this._boundsForObject(object3D);
+        const sx = (max.x - min.x), sy = (max.y - min.y), sz = (max.z - min.z);
+        const radius = Math.max(1e-4, Math.min(sx, sz) * 0.5);
+        const height = Math.max(1e-4, sy - 2 * radius);
+        // Y-up capsule
+        return new Ammo.btCapsuleShape(radius, Math.max(0, height));
+      }
+      // default or explicit convex
+      if (shape === "convex" || !shape) {
+        const points = this._collectWorldPoints(object3D, { mergeChildren });
+        if (!points || points.length < 4) return null;
+        const hull = new Ammo.btConvexHullShape();
+        for (let i = 0; i < points.length; i++) {
+          const p = points[i];
+          hull.addPoint(new Ammo.btVector3(p.x, p.y, p.z), true);
+        }
+        if (hull.optimizeConvexHull) hull.optimizeConvexHull();
+        if (hull.initializePolyhedralFeatures) hull.initializePolyhedralFeatures();
+        return hull;
+      }
+    } catch {}
+    return null;
+  }
+
+  _collectWorldPoints(object3D, { mergeChildren = true } = {}) {
+    const pts = [];
+    object3D.updateWorldMatrix(true, true);
+    object3D.traverse((o) => {
+      if (!o.isMesh || !o.geometry) return;
+      const pos = o.geometry.getAttribute("position");
+      if (!pos) return;
+      const m = o.matrixWorld;
+      const v = new Vector3();
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(m);
+        pts.push(v.clone());
+      }
+      if (!mergeChildren) {
+        // no-op here; caller will treat as single hull; we keep all points
+      }
+    });
+    return pts;
+  }
+
+  _boundsForObject(object3D) {
+    const pts = this._collectWorldPoints(object3D, { mergeChildren: true });
+    const min = new Vector3(+Infinity, +Infinity, +Infinity);
+    const max = new Vector3(-Infinity, -Infinity, -Infinity);
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (p.x < min.x) min.x = p.x; if (p.y < min.y) min.y = p.y; if (p.z < min.z) min.z = p.z;
+      if (p.x > max.x) max.x = p.x; if (p.y > max.y) max.y = p.y; if (p.z > max.z) max.z = p.z;
+    }
+    if (!isFinite(min.x)) {
+      // fallback 1x1x1 at origin
+      return { min: new Vector3(-0.5, -0.5, -0.5), max: new Vector3(0.5, 0.5, 0.5) };
+    }
+    return { min, max };
   }
 
   _ammoRaycast(origin, direction, maxDistance) {

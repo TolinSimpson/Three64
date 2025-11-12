@@ -780,12 +780,84 @@ export class SceneLoader {
       return undefined;
     };
     const truthy = (v) => v === true || v === "true" || v === 1 || v === "1";
+    const hasPrefix = (obj, prefix) => {
+      try {
+        const keys = Object.keys(obj || {});
+        for (let i = 0; i < keys.length; i++) if (String(keys[i]).startsWith(prefix)) return true;
+      } catch {}
+      return false;
+    };
+    const gatherWithPrefix = (obj, prefix) => {
+      const out = {};
+      try {
+        for (const [k, v] of Object.entries(obj || {})) {
+          if (!String(k).startsWith(prefix)) continue;
+          const tail = String(k).substring(prefix.length);
+          const key = tail.replace(/^\./, "");
+          if (key) out[key] = v;
+        }
+      } catch {}
+      return out;
+    };
 
     root.updateWorldMatrix(true, true);
 
     root.traverse((o) => {
       const name = o.name || "";
       const ud = o.userData || {};
+
+      // ----- RigidBody via extras -----
+      // Accept:
+      // - ud.physics.rigidbody = { type, mass, shape, friction, restitution, linearDamping, angularDamping }
+      // - dotted: physics.rigidbody.type, physics.rigidbody.mass, ...
+      // - fallback: physics.type/shape, or top-level rigidbody object
+      let rbObj = (ud.physics && typeof ud.physics.rigidbody === "object") ? ud.physics.rigidbody : undefined;
+      if (!rbObj && hasPrefix(ud, "physics.rigidbody")) {
+        rbObj = gatherWithPrefix(ud, "physics.rigidbody");
+      }
+      if (!rbObj && ud.rigidbody && typeof ud.rigidbody === "object") {
+        rbObj = ud.rigidbody;
+      }
+      // Also allow type/shape placed under physics.* directly
+      const rbType =
+        (rbObj && rbObj.type) ||
+        get(ud, ["physics.type", "physicsType", "RigidBodyType"]);
+      const rbShape =
+        (rbObj && (rbObj.shape || rbObj.collider)) ||
+        get(ud, ["physics.shape", "physics.collider", "physics.collision"]);
+
+      if (rbObj || rbType || rbShape) {
+        const typeStr = String((rbObj && rbObj.type) || rbType || "dynamic").toLowerCase();
+        const shapeStr = String((rbObj && (rbObj.shape || rbObj.collider)) || rbShape || ud.collider || "box").toLowerCase();
+        const mass = (rbObj && typeof rbObj.mass === "number") ? rbObj.mass : undefined;
+        const friction = (rbObj && typeof rbObj.friction === "number") ? rbObj.friction : get(ud, ["physics.friction"]);
+        const restitution = (rbObj && typeof rbObj.restitution === "number") ? rbObj.restitution : get(ud, ["physics.restitution"]);
+        const linearDamping = (rbObj && typeof rbObj.linearDamping === "number") ? rbObj.linearDamping : get(ud, ["physics.linearDamping"]);
+        const angularDamping = (rbObj && typeof rbObj.angularDamping === "number") ? rbObj.angularDamping : get(ud, ["physics.angularDamping"]);
+        const mergeChildren = get(ud, ["mergeChildren"]) ?? ud?.physics?.mergeChildren ?? ud["physics.mergeChildren"];
+
+        try {
+          physics.addRigidBodyForObject(o, {
+            shape: shapeStr,
+            type: typeStr,
+            mass,
+            friction,
+            restitution,
+            linearDamping,
+            angularDamping,
+            mergeChildren: mergeChildren !== false,
+          });
+          // If this object is a helper collider by name, hide it unless explicitly visible
+          if (/^(COL_|UCX_|UBX_)/i.test(name) && o.visible) {
+            const vis = truthy(get(ud, ["colliderVisible", "collisionVisible"])) || truthy(ud?.physics?.visible) || truthy(ud["physics.visible"]);
+            o.visible = !!vis;
+          }
+        } catch (e) {
+          console.warn("Failed to create rigidbody for", o.name, e);
+        }
+        // Do not also create a static collider when rigidbody present
+        return;
+      }
 
       // Name-based collider conventions: COL_* or UCX_/UBX_ like Unreal
       const nameSaysCollider = /^(COL_|UCX_|UBX_)/i.test(name);

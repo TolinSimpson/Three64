@@ -199,6 +199,8 @@ function animate() {
     app.budget.resetFrame();
     // Run event phases including fixed/update/late
     app.eventSystem.tick(app, cappedMs / 1000);
+    // Step physics world
+    try { app.physics.step(cappedMs / 1000); } catch {}
     app.rendererCore.update(cappedMs / 1000);
     app.rendererCore.render();
     const tris = app.rendererCore.getTriangleCount();
