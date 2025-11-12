@@ -1,0 +1,13 @@
+{
+  "type": "Statistic",
+  "params": {
+    "name": "health",
+    "min": 0,
+    "max": 100,
+    "current": 100,
+    "regenPerSec": 0,
+    "clamp": true,
+    "easing": "linear"
+  },
+  "paramDescriptions": []
+}
