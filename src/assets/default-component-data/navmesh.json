@@ -1,21 +1,57 @@
 {
   "type": "NavMesh",
   "params": {
-    "url": "assets/component-data/navmesh.json",
+    "cellSize": 0.5,
+    "maxGridSize": 512,
+    "maxSlopeDeg": 45,
+    "stepHeight": 0.4,
+    "agentRadius": 0.3,
+    "padding": 0.5,
+    "raycastHeight": 50,
     "smooth": true
   },
   "paramDescriptions": [
     {
-      "key": "url",
-      "label": "NavMesh URL",
-      "type": "string",
-      "description": "Relative URL to navmesh JSON (vertices + triangles)."
+      "key": "cellSize",
+      "label": "Cell Size (m)",
+      "type": "number",
+      "min": 0.1,
+      "max": 2,
+      "step": 0.05,
+      "description": "Grid cell resolution."
+    },
+    {
+      "key": "maxSlopeDeg",
+      "label": "Max Slope (deg)",
+      "type": "number",
+      "min": 0,
+      "max": 89.9,
+      "step": 0.1,
+      "description": "Maximum walkable surface slope."
+    },
+    {
+      "key": "stepHeight",
+      "label": "Step Height (m)",
+      "type": "number",
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "description": "Max vertical delta between neighbors."
+    },
+    {
+      "key": "agentRadius",
+      "label": "Agent Radius (m)",
+      "type": "number",
+      "min": 0.05,
+      "max": 1,
+      "step": 0.01,
+      "description": "Clearance radius (reserved for future use)."
     },
     {
       "key": "smooth",
       "label": "Smooth Path",
       "type": "boolean",
-      "description": "Smooth using string-pulling (funnel algorithm)."
+      "description": "Merge linear waypoint sequences."
     }
   ]
 }

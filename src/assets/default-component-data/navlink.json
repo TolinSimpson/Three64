@@ -1,0 +1,31 @@
+{
+  "type": "NavLink",
+  "params": {
+    "targetName": "",
+    "bidirectional": true,
+    "cost": 1
+  },
+  "paramDescriptions": [
+    {
+      "key": "targetName",
+      "label": "Target Object Name",
+      "type": "string",
+      "description": "Name of the target object to link to."
+    },
+    {
+      "key": "bidirectional",
+      "label": "Bidirectional",
+      "type": "boolean",
+      "description": "If true, link works both ways."
+    },
+    {
+      "key": "cost",
+      "label": "Cost Multiplier",
+      "type": "number",
+      "min": 0.01,
+      "max": 10,
+      "step": 0.01,
+      "description": "Traversal cost multiplier for this link."
+    }
+  ]
+}
