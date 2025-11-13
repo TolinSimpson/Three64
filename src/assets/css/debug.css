@@ -36,6 +36,15 @@
   cursor: pointer;
 }
 
+#toggle-navmesh-btn {
+  pointer-events: auto;
+  background: #1e1e1e;
+  color: #9cf;
+  border: 1px solid #334;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
 #debug-cli {
   pointer-events: auto;
   position: absolute;

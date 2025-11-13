@@ -1,14 +1,26 @@
 {
   "type": "Agent",
   "params": {
+    "behavior": "seek",
     "turnSpeed": 3.5,
     "arriveRadius": 0.25,
     "speed": 3.2,
     "sprintMultiplier": 1.8,
     "useNavMesh": false,
-    "repathInterval": 0.5
+    "repathInterval": 0.5,
+    "fireRate": 0.8,
+    "projectileArchetype": "Projectile",
+    "projectileSpeed": 14,
+    "projectileDamage": 10,
+    "attackRange": 12
   },
   "paramDescriptions": [
+    {
+      "key": "behavior",
+      "label": "Behavior",
+      "type": "string",
+      "description": "seek | ranged"
+    },
     {
       "key": "turnSpeed",
       "label": "Turn Speed (rad/s)",
@@ -59,6 +71,48 @@
       "max": 5,
       "step": 0.1,
       "description": "Time between path recomputation while moving."
+    },
+    {
+      "key": "fireRate",
+      "label": "Fire Rate (shots/sec)",
+      "type": "number",
+      "min": 0.1,
+      "max": 20,
+      "step": 0.1,
+      "description": "Ranged: shots per second."
+    },
+    {
+      "key": "projectileArchetype",
+      "label": "Projectile Archetype",
+      "type": "string",
+      "description": "Archetype name to obtain from pool for shots (default Projectile)."
+    },
+    {
+      "key": "projectileSpeed",
+      "label": "Projectile Speed (m/s)",
+      "type": "number",
+      "min": 0.1,
+      "max": 200,
+      "step": 0.1,
+      "description": "Initial bullet speed."
+    },
+    {
+      "key": "projectileDamage",
+      "label": "Projectile Damage",
+      "type": "number",
+      "min": 0,
+      "max": 1000,
+      "step": 1,
+      "description": "Damage applied to health on hit."
+    },
+    {
+      "key": "attackRange",
+      "label": "Attack Range (m)",
+      "type": "number",
+      "min": 0.1,
+      "max": 200,
+      "step": 0.1,
+      "description": "Max range to attempt firing."
     }
   ]
 }

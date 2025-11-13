@@ -16,7 +16,8 @@ import "./raycaster.js";
 import "./volume.js";
 import "./player.js"; // ensure Player component registers itself via ComponentRegistry
 import "./agent.js";
-import "./healthbar.js";
+import "./locomotion.js";
+import "./projectile.js";
 import "./statistic.js";
 import "./statisticBar.js";
 export const config = {

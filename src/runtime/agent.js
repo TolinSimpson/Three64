@@ -8,6 +8,8 @@ export class Agent extends Component {
     super(ctx);
     this.controller = null;
     const opts = (ctx && ctx.options) || {};
+    // Behavior/mode
+    this.behavior = typeof opts.behavior === 'string' ? opts.behavior : 'seek'; // 'seek' | 'ranged'
     this.turnSpeed = typeof opts.turnSpeed === 'number' ? opts.turnSpeed : 3.5; // rad/s
     this.arriveRadius = typeof opts.arriveRadius === 'number' ? opts.arriveRadius : 0.25;
     this.target = null; // { x, y, z } or Object3D
@@ -18,10 +20,18 @@ export class Agent extends Component {
     this._path = null; // Array<Vector3>
     this._pathIndex = 0;
     this._timeSinceRepath = 0;
+    // Ranged attack config
+    this.fireRate = typeof opts.fireRate === 'number' ? opts.fireRate : 0.8; // shots/sec
+    this.projectileArchetype = typeof opts.projectileArchetype === 'string' ? opts.projectileArchetype : 'Projectile';
+    this.projectileSpeed = typeof opts.projectileSpeed === 'number' ? opts.projectileSpeed : 14;
+    this.projectileDamage = typeof opts.projectileDamage === 'number' ? opts.projectileDamage : 10;
+    this.attackRange = typeof opts.attackRange === 'number' ? opts.attackRange : 12;
+    this._fireCooldown = 0;
   }
 
   static getDefaultParams() {
     return {
+      behavior: 'seek',
       turnSpeed: 3.5,
       arriveRadius: 0.25,
       // Movement settings passed through to CharacterController
@@ -29,12 +39,24 @@ export class Agent extends Component {
       sprintMultiplier: 1.8,
       // Navigation
       useNavMesh: false,
-      repathInterval: 0.5
+      repathInterval: 0.5,
+      // Ranged attack
+      fireRate: 0.8,
+      projectileArchetype: 'Projectile',
+      projectileSpeed: 14,
+      projectileDamage: 10,
+      attackRange: 12
     };
   }
 
   static getParamDescriptions() {
     return [
+      {
+        key: 'behavior',
+        label: 'Behavior',
+        type: 'string',
+        description: 'seek | ranged'
+      },
       {
         key: 'turnSpeed',
         label: 'Turn Speed (rad/s)',
@@ -85,6 +107,48 @@ export class Agent extends Component {
         max: 5,
         step: 0.1,
         description: 'Time between path recomputation while moving.'
+      },
+      {
+        key: 'fireRate',
+        label: 'Fire Rate (shots/sec)',
+        type: 'number',
+        min: 0.1,
+        max: 20,
+        step: 0.1,
+        description: 'Ranged: shots per second.'
+      },
+      {
+        key: 'projectileArchetype',
+        label: 'Projectile Archetype',
+        type: 'string',
+        description: 'Archetype name to obtain from pool for shots (default Projectile).'
+      },
+      {
+        key: 'projectileSpeed',
+        label: 'Projectile Speed (m/s)',
+        type: 'number',
+        min: 0.1,
+        max: 200,
+        step: 0.1,
+        description: 'Initial bullet speed.'
+      },
+      {
+        key: 'projectileDamage',
+        label: 'Projectile Damage',
+        type: 'number',
+        min: 0,
+        max: 1000,
+        step: 1,
+        description: 'Damage applied to health on hit.'
+      },
+      {
+        key: 'attackRange',
+        label: 'Attack Range (m)',
+        type: 'number',
+        min: 0.1,
+        max: 200,
+        step: 0.1,
+        description: 'Max range to attempt firing.'
       }
     ];
   }
@@ -138,6 +202,8 @@ export class Agent extends Component {
     if (!goal) {
       this.controller.setMoveInput(0, 0, false, false);
       this.controller.fixedStep(app, dt);
+      // Even without goal, allow ranged logic to tick cooldown
+      this._tickRanged(dt, app, null);
       return;
     }
     // If navmesh is available and enabled, follow a path
@@ -150,10 +216,13 @@ export class Agent extends Component {
       }
       const nextPoint = this._nextWaypoint(goal);
       this._moveToward(nextPoint, dt, app);
+      // Also tick ranged attack
+      this._tickRanged(dt, app, goal);
       return;
     }
     // Fallback: direct steering toward goal
     this._moveToward(goal, dt, app);
+    this._tickRanged(dt, app, goal);
   }
 
   Update(dt /*, app */) {
@@ -204,6 +273,62 @@ export class Agent extends Component {
     this.controller.setLookDelta(turn, 0);
     this.controller.setMoveInput(0, 1, false, false);
     this.controller.fixedStep(app, dt);
+  }
+
+  _tickRanged(dt, app, goal) {
+    if (String(this.behavior).toLowerCase() !== 'ranged') {
+      this._fireCooldown = Math.max(0, this._fireCooldown - dt);
+      return;
+    }
+    this._fireCooldown -= dt;
+    const player = app?.player || null;
+    const rig = player?.rig || app?.rendererCore?.camera?.parent || null;
+    const targetPos = goal || (rig ? rig.position : null);
+    if (!targetPos) return;
+    // Face target
+    const to = targetPos.clone().sub(this.controller.position);
+    to.y = 0;
+    const dist = to.length();
+    if (dist > 1e-5) {
+      to.multiplyScalar(1 / dist);
+      const desiredYaw = Math.atan2(-to.x, -to.z);
+      const delta = wrapAngle(desiredYaw - this.controller.targetYaw);
+      const maxTurn = this.turnSpeed * dt;
+      const turn = Math.max(-maxTurn, Math.min(maxTurn, delta));
+      this.controller.setLookDelta(turn, 0);
+    }
+    if (dist > this.attackRange) return;
+    if (this._fireCooldown > 0) return;
+    this._fireCooldown = 1 / Math.max(0.01, this.fireRate);
+    this._shootProjectile(app, targetPos);
+  }
+
+  _shootProjectile(app, targetPos) {
+    if (!app?.pool) return;
+    let obj = null;
+    try { obj = app.pool.obtain(this.projectileArchetype, { overrides: { radius: 0.08, damage: this.projectileDamage, speed: this.projectileSpeed } }); } catch {}
+    if (!obj) return;
+    try { app.rendererCore.scene.add(obj); } catch {}
+    // Find projectile component
+    const comps = obj.__components || [];
+    let proj = null;
+    for (let i = 0; i < comps.length; i++) {
+      const c = comps[i];
+      const n = (c?.propName || c?.constructor?.name || "").toString().toLowerCase();
+      if (n === 'projectile') { proj = c; break; }
+    }
+    if (!proj || typeof proj.fire !== 'function') return;
+    // Spawn from agent's muzzle (use object position, with slight vertical offset)
+    const start = new Vector3();
+    try { this.object?.getWorldPosition?.(start); } catch {}
+    if (!Number.isFinite(start.y)) start.copy(this.controller.position);
+    start.y += 1.4;
+    const dir = targetPos.clone().sub(start);
+    dir.y = 0;
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
+    dir.normalize();
+    proj.reset?.();
+    proj.fire({ position: start, direction: dir, speed: this.projectileSpeed, shooter: this.object });
   }
 }
 

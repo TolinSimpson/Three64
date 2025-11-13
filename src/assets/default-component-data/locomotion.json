@@ -1,0 +1,87 @@
+{
+  "type": "Locomotion",
+  "params": {
+    "behavior": "seekPlayer",
+    "preferRigForPlayer": true,
+    "objectName": "",
+    "targetPosition": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "targetOffset": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "useNavMesh": true,
+    "repathInterval": 0.5,
+    "turnSpeed": 3.5,
+    "arriveRadius": 0.25
+  },
+  "paramDescriptions": [
+    {
+      "key": "behavior",
+      "label": "Behavior Preset",
+      "type": "string",
+      "description": "idle | seekPlayer | seekObject | seekPosition"
+    },
+    {
+      "key": "preferRigForPlayer",
+      "label": "Prefer Player Rig",
+      "type": "boolean",
+      "description": "When seeking player, follow the moving rig/camera instead of the GLTF authoring object."
+    },
+    {
+      "key": "objectName",
+      "label": "Object Name (seekObject)",
+      "type": "string",
+      "description": "Name to search in scene graph."
+    },
+    {
+      "key": "targetPosition",
+      "label": "Target Position (seekPosition)",
+      "type": "vec3",
+      "description": "World position to seek."
+    },
+    {
+      "key": "targetOffset",
+      "label": "Target Offset",
+      "type": "vec3",
+      "description": "Offset applied to resolved target."
+    },
+    {
+      "key": "useNavMesh",
+      "label": "Use NavMesh",
+      "type": "boolean",
+      "description": "Enable pathfinding when NavMesh exists."
+    },
+    {
+      "key": "repathInterval",
+      "label": "Repath Interval (s)",
+      "type": "number",
+      "min": 0.1,
+      "max": 5,
+      "step": 0.1,
+      "description": "Recompute path cadence."
+    },
+    {
+      "key": "turnSpeed",
+      "label": "Turn Speed (rad/s)",
+      "type": "number",
+      "min": 0.1,
+      "max": 10,
+      "step": 0.1,
+      "description": "Yaw turn rate hint for Agent."
+    },
+    {
+      "key": "arriveRadius",
+      "label": "Arrive Radius (m)",
+      "type": "number",
+      "min": 0.05,
+      "max": 2,
+      "step": 0.05,
+      "description": "Arrival distance hint for Agent."
+    }
+  ]
+}

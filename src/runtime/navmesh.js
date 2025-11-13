@@ -1,5 +1,5 @@
 'use strict';
-import { Vector3, Raycaster, Box3 } from "three";
+import { Vector3, Raycaster, Box3, BufferGeometry, Float32BufferAttribute, Points, PointsMaterial } from "three";
 import { Component, ComponentRegistry } from "./component.js";
 import { loadJSON } from "./io.js";
 
@@ -15,6 +15,7 @@ export class NavMesh extends Component {
 		this._cfg = null;
 		this._links = []; // [{ aIdx, bIdx, bidirectional, cost }]
 		this._loaded = false;
+			this._debugObject = null;
 	}
 
 	static getDefaultParams() {
@@ -135,6 +136,53 @@ export class NavMesh extends Component {
 			console.warn("NavMesh._buildFromSceneNavigables failed", e);
 			this._loaded = false;
 		}
+	}
+
+	setDebugVisible(on) {
+		try {
+			const scene = this.game?.rendererCore?.scene;
+			if (!scene) return;
+			if (!on) {
+				if (this._debugObject) {
+					try { scene.remove(this._debugObject); } catch {}
+					try { this._debugObject.geometry?.dispose?.(); } catch {}
+					try { this._debugObject.material?.dispose?.(); } catch {}
+					this._debugObject = null;
+				}
+				return;
+			}
+			if (this._debugObject) {
+				this._debugObject.visible = true;
+				return;
+			}
+			const g = this._grid;
+			if (!this._loaded || !g) return;
+			const positions = [];
+			for (let zi = 0; zi < g.nz; zi++) {
+				for (let xi = 0; xi < g.nx; xi++) {
+					const i = zi * g.nx + xi;
+					const c = g.cells[i];
+					if (!c) continue;
+					const w = this._worldForIndex(i);
+					positions.push(w.x, c.y + 0.02, w.z);
+				}
+			}
+			if (positions.length === 0) return;
+			const geom = new BufferGeometry();
+			geom.setAttribute('position', new Float32BufferAttribute(positions, 3));
+			const mat = new PointsMaterial({
+				color: 0x00ff88,
+				size: Math.max(0.02, g.cellSize * 0.12),
+				sizeAttenuation: true,
+				transparent: true,
+				opacity: 0.95,
+				depthWrite: false
+			});
+			const pts = new Points(geom, mat);
+			pts.name = 'NavMeshDebugPoints';
+			scene.add(pts);
+			this._debugObject = pts;
+		} catch {}
 	}
 
 	_cellIndexForXZ(x, z) {

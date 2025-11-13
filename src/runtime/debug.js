@@ -14,6 +14,7 @@ export const Debug = {
     wireframe: false,
     budgetOverlay: true,
     collidersLime: false,
+    navmesh: false,
   },
   profiler: {
     fpsEl: null,
@@ -81,12 +82,11 @@ export const Debug = {
 
 export async function initDebugOverlay(game) {
   Debug.config = config;
-  if (!Debug.config?.devMode) return;
-
-  await ensureOverlayHTMLInline(game);
-  wireElements();
   applyURLFlags();
   installKeyHandlers(game);
+  if (!Debug.config?.devMode) return;
+  await ensureOverlayHTMLInline(game);
+  wireElements();
   setHUDVisible(Debug.toggles.showHUD);
 }
 
@@ -109,6 +109,15 @@ function wireElements() {
   Debug.profiler.particlesEl = document.getElementById('hud-particles');
   Debug.cli.inputEl = document.getElementById('debug-cli-input');
   Debug.cli.logEl = document.getElementById('debug-cli-log');
+  const navBtn = document.getElementById('toggle-navmesh-btn');
+  if (navBtn) {
+    navBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      Debug.toggles.navmesh = !Debug.toggles.navmesh;
+      applyNavMesh(window.__game, Debug.toggles.navmesh);
+      log(`[navmesh] ${Debug.toggles.navmesh ? 'on' : 'off'}`);
+    });
+  }
   if (Debug.cli.inputEl) {
     Debug.cli.inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -122,8 +131,8 @@ function wireElements() {
 
 function installKeyHandlers(game) {
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'F1' || e.key === '`') {
-      toggleOverlay();
+    if (e.code === 'F1' || e.code === 'Backquote' || e.key === '`' || e.key === '~') {
+      toggleOverlay(game);
       e.preventDefault();
     } else if (e.code === 'F2') {
       Debug.toggles.wireframe = !Debug.toggles.wireframe;
@@ -143,8 +152,11 @@ function installKeyHandlers(game) {
   });
 }
 
-function toggleOverlay() {
+async function toggleOverlay(game) {
   Debug.enabled = !Debug.enabled;
+  // Ensure overlay exists even if devMode is off
+  await ensureOverlayHTMLInline(game || window.__game);
+  wireElements();
   if (Debug.overlayEl) Debug.overlayEl.style.display = Debug.enabled ? 'block' : 'none';
   setHUDVisible(Debug.enabled && Debug.toggles.showHUD);
 }
@@ -172,6 +184,15 @@ function applyColliders(game, enabled) {
   } catch {}
 }
 
+function applyNavMesh(game, enabled) {
+  try {
+    const g = game || window.__game;
+    const nav = g?.navMesh;
+    if (!nav || typeof nav.setDebugVisible !== 'function') return;
+    nav.setDebugVisible(!!enabled);
+  } catch {}
+}
+
 async function ensureOverlayHTMLInline(game) {
   if (document.getElementById('debug-overlay')) return;
   const ui = game?.ui || window.__game?.ui;
@@ -190,6 +211,15 @@ async function ensureOverlayHTMLInline(game) {
             } catch {
               window.open('docs/help.html', '_blank', 'noopener,noreferrer');
             }
+          });
+        }
+        const navBtn = document.getElementById('toggle-navmesh-btn');
+        if (navBtn) {
+          navBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            Debug.toggles.navmesh = !Debug.toggles.navmesh;
+            applyNavMesh(window.__game, Debug.toggles.navmesh);
+            log(`[navmesh] ${Debug.toggles.navmesh ? 'on' : 'off'}`);
           });
         }
       }, 0);
@@ -236,6 +266,19 @@ async function ensureOverlayHTMLInline(game) {
     row.appendChild(s);
   });
   hud.appendChild(row);
+  const controls = document.createElement('div');
+  controls.className = 'hud-controls';
+  const navBtn = document.createElement('button');
+  navBtn.id = 'toggle-navmesh-btn';
+  navBtn.textContent = 'Toggle NavMesh';
+  navBtn.style.pointerEvents = 'auto';
+  navBtn.style.background = '#1e1e1e';
+  navBtn.style.color = '#9cf';
+  navBtn.style.border = '1px solid #334';
+  navBtn.style.padding = '4px 8px';
+  navBtn.style.cursor = 'pointer';
+  controls.appendChild(navBtn);
+  hud.appendChild(controls);
   const cli = document.createElement('div');
   cli.id = 'debug-cli';
   cli.style.pointerEvents = 'auto';

@@ -1,0 +1,13 @@
+{
+  "type": "Projectile",
+  "params": {
+    "speed": 12,
+    "damage": 10,
+    "radius": 0.1,
+    "lifeSeconds": 4,
+    "gravity": false,
+    "shape": "sphere",
+    "mass": 0.2
+  },
+  "paramDescriptions": []
+}
