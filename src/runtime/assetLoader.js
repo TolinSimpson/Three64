@@ -528,7 +528,7 @@ export class SceneLoader {
       if (!key || !info || !info.size) continue;
       try { this.game.pool.prewarm(key, info.size, { overrides: info.overrides, traits: info.traits }); } catch {}
     }
-    // Spawn
+    // Spawn archetypes and instantiate components attached via userData
     const tmpPos = new Vector3();
     const tmpQuat = new Quaternion();
     const tmpScale = new Vector3();
@@ -549,6 +549,26 @@ export class SceneLoader {
       } catch {}
       try { this.game.rendererCore.scene.add(inst); } catch {}
     }
+    // Ensure any components on objects get instantiated (NavMesh/NavLink etc)
+    const created = [];
+    root.traverse(async (o) => {
+      const ud = o.userData || {};
+      const comps = this._extractComponentsFromUserData(ud);
+      for (const c of comps) {
+        try {
+          const ctor = (c.type && (await this._resolveComponentCtor(c.type))) || null;
+          if (!ctor) continue;
+          const instance = new ctor({ game: this.game, object: o, options: c.params, propName: c.type });
+          if (instance && typeof instance.Initialize === "function") {
+            await Promise.resolve(instance.Initialize());
+          }
+          if (instance) {
+            this.game.componentInstances.push(instance);
+            created.push(instance);
+          }
+        } catch {}
+      }
+    });
   }
 
   _buildInstancedMeshes(root) {
@@ -859,6 +879,16 @@ export class SceneLoader {
       } catch {}
       return out;
     };
+    const toNumberArray = (v) => {
+      if (Array.isArray(v)) return v.map(Number);
+      if (typeof v === "string") {
+        try { const a = JSON.parse(v); if (Array.isArray(a)) return a.map(Number); } catch {}
+      }
+      return undefined;
+    };
+
+    // Collect joints to create after bodies
+    const jointDefs = [];
 
     root.updateWorldMatrix(true, true);
 
@@ -895,6 +925,21 @@ export class SceneLoader {
         const linearDamping = (rbObj && typeof rbObj.linearDamping === "number") ? rbObj.linearDamping : get(ud, ["physics.linearDamping"]);
         const angularDamping = (rbObj && typeof rbObj.angularDamping === "number") ? rbObj.angularDamping : get(ud, ["physics.angularDamping"]);
         const mergeChildren = get(ud, ["mergeChildren"]) ?? ud?.physics?.mergeChildren ?? ud["physics.mergeChildren"];
+        // Collision filters
+        const layer = (rbObj && typeof rbObj.layer === "number") ? rbObj.layer : get(ud, ["physics.layer"]);
+        let mask = (rbObj && rbObj.mask != null) ? rbObj.mask : get(ud, ["physics.mask"]);
+        if (typeof mask === "string") {
+          // allow "1|2|4" or "[1,2,4]"
+          if (mask.includes("|")) {
+            mask = mask.split("|").map(s => Number(s.trim())).reduce((a, b) => (a | b), 0);
+          } else {
+            try { mask = JSON.parse(mask); } catch {}
+          }
+        }
+        const size = rbObj?.size ?? get(ud, ["physics.size"]);
+        const radius = (typeof rbObj?.radius === "number") ? rbObj.radius : get(ud, ["physics.radius"]);
+        const height = (typeof rbObj?.height === "number") ? rbObj.height : get(ud, ["physics.height"]);
+        const center = rbObj?.center ?? get(ud, ["physics.center"]);
 
         try {
           physics.addRigidBodyForObject(o, {
@@ -906,6 +951,12 @@ export class SceneLoader {
             linearDamping,
             angularDamping,
             mergeChildren: mergeChildren !== false,
+            layer: (typeof layer === "number") ? layer : undefined,
+            mask: (Array.isArray(mask) || typeof mask === "number") ? mask : undefined,
+            size: Array.isArray(size) ? toNumberArray(size) : undefined,
+            radius: (typeof radius === "number") ? radius : undefined,
+            height: (typeof height === "number") ? height : undefined,
+            center: Array.isArray(center) ? toNumberArray(center) : undefined,
           });
           // If this object is a helper collider by name, hide it unless explicitly visible
           if (/^(COL_|UCX_|UBX_)/i.test(name) && o.visible) {
@@ -916,7 +967,7 @@ export class SceneLoader {
           console.warn("Failed to create rigidbody for", o.name, e);
         }
         // Do not also create a static collider when rigidbody present
-        return;
+        // continue to allow joint authoring on same object
       }
 
       // Name-based collider conventions: COL_* or UCX_/UBX_ like Unreal
@@ -965,7 +1016,101 @@ export class SceneLoader {
       if (nameSaysCollider && o.visible) {
         try { o.visible = !!visible; } catch {}
       }
+
+      // --------- Joint collection (deferred) ----------
+      // Accept nested array at ud.physics.joint(s) or dotted physics.joint.N
+      let jointsNested = undefined;
+      if (ud.physics && (Array.isArray(ud.physics.joints) || Array.isArray(ud.physics.joint))) {
+        jointsNested = Array.isArray(ud.physics.joints) ? ud.physics.joints : ud.physics.joint;
+      }
+      const jointsFromDots = [];
+      if (hasPrefix(ud, "physics.joint")) {
+        const flat = gatherWithPrefix(ud, "physics.joint");
+        // Expect keys like "0", "1.type", "1.anchorA", etc.
+        const buckets = {};
+        for (const [k, v] of Object.entries(flat)) {
+          const m = /^(\d+)(?:\.|$)(.*)$/.exec(String(k));
+          if (!m) continue;
+          const idx = m[1];
+          const key = m[2] || "";
+          if (!buckets[idx]) buckets[idx] = {};
+          if (key) buckets[idx][key] = v;
+        }
+        for (const idx of Object.keys(buckets)) jointsFromDots.push(buckets[idx]);
+      }
+      const combined = [
+        ...(Array.isArray(jointsNested) ? jointsNested : []),
+        ...jointsFromDots
+      ];
+      for (const jd of combined) {
+        if (!jd || typeof jd !== "object") continue;
+        const type = String(jd.type || jd.kind || "").toLowerCase();
+        if (!type) continue;
+        const aName = jd.a || jd.objectA || jd.bodyA || null;
+        const bName = jd.b || jd.objectB || jd.bodyB || null;
+        jointDefs.push({
+          source: o,
+          type,
+          aName,
+          bName,
+          def: jd
+        });
+      }
     });
+
+    // Resolve and add joints
+    const byName = new Map();
+    try {
+      root.traverse((obj) => { if (obj && obj.name) byName.set(obj.name, obj); });
+    } catch {}
+    for (const j of jointDefs) {
+      const a = (typeof j.aName === "string" && byName.get(j.aName)) || j.source;
+      const b = (typeof j.bName === "string" && byName.get(j.bName)) || j.source.parent || null;
+      if (!a || !b) continue;
+      try {
+        const d = j.def || {};
+        switch (j.type) {
+          case "p2p":
+          case "point":
+          case "ball":
+            physics.addPointToPointJoint(a, b, {
+              anchorA: toNumberArray(d.anchorA) || [0, 0, 0],
+              anchorB: toNumberArray(d.anchorB) || [0, 0, 0],
+            });
+            break;
+          case "hinge":
+            physics.addHingeJoint(a, b, {
+              anchorA: toNumberArray(d.anchorA) || [0, 0, 0],
+              anchorB: toNumberArray(d.anchorB) || [0, 0, 0],
+              axisA: toNumberArray(d.axisA) || [0, 1, 0],
+              axisB: toNumberArray(d.axisB) || [0, 1, 0],
+              limits: Array.isArray(d.limits) ? d.limits : undefined,
+            });
+            break;
+          case "slider":
+            physics.addSliderJoint(a, b, {
+              frameA: d.frameA || {},
+              frameB: d.frameB || {},
+              linearLimits: Array.isArray(d.linearLimits) ? d.linearLimits : undefined,
+              angularLimits: Array.isArray(d.angularLimits) ? d.angularLimits : undefined,
+            });
+            break;
+          case "fixed":
+            physics.addFixedJoint(a, b);
+            break;
+          case "cone":
+          case "conetwist":
+            physics.addConeTwistJoint(a, b, {
+              frameA: d.frameA || {},
+              frameB: d.frameB || {},
+              limits: d.limits || undefined,
+            });
+            break;
+        }
+      } catch (e) {
+        console.warn("Failed to create joint:", j.type, e);
+      }
+    }
   }
 }
 

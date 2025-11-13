@@ -608,6 +608,13 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 		row = layout.row(align=True)
 		row.operator("three64.open_addon_preferences", text="Open Add-on Preferences", icon="PREFERENCES")
 		if obj:
+			# Rigidbody authoring
+			layout.separator()
+			boxRb = layout.box()
+			boxRb.label(text="Rigidbody", icon="PHYSICS")
+			rowRb = boxRb.row(align=True)
+			rowRb.operator("three64.set_rigidbody", text="Set Rigidbody", icon="MOD_PHYSICS")
+
 			# Mark Navigable button
 			row0 = layout.row(align=True)
 			try:
@@ -632,6 +639,13 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 				opc.clear = True
 			except Exception:
 				pass
+
+			# Joints authoring
+			layout.separator()
+			boxJ = layout.box()
+			boxJ.label(text="Joint", icon="CONSTRAINT")
+			rowJ = boxJ.row(align=True)
+			rowJ.operator("three64.add_joint", text="Add Joint", icon="CONSTRAINT_BONE")
 
 			row3 = layout.row(align=True)
 			row3.prop(obj, "three64_component", text="Component")
@@ -1001,6 +1015,151 @@ class THREE64_OT_mark_collider(bpy.types.Operator):
 			return {"CANCELLED"}
 
 
+class THREE64_OT_set_rigidbody(bpy.types.Operator):
+	bl_idname = "three64.set_rigidbody"
+	bl_label = "Set Rigidbody"
+	bl_description = "Set physics.rigidbody.* properties on this object"
+	bl_options = {"REGISTER", "UNDO"}
+
+	body_type: bpy.props.EnumProperty(
+		name="Type",
+		description="Rigidbody type",
+		items=(
+			("dynamic", "Dynamic", ""),
+			("kinematic", "Kinematic", ""),
+			("static", "Static", ""),
+		),
+		default="dynamic",
+	)
+	shape: bpy.props.EnumProperty(
+		name="Shape",
+		description="Collision shape",
+		items=(
+			("box", "Box", ""),
+			("sphere", "Sphere", ""),
+			("capsule", "Capsule", ""),
+			("convex", "Convex", ""),
+		),
+		default="box",
+	)
+	mass: bpy.props.FloatProperty(name="Mass", default=1.0, min=0.0)
+	friction: bpy.props.FloatProperty(name="Friction", default=0.5, min=0.0)
+	restitution: bpy.props.FloatProperty(name="Restitution", default=0.0, min=0.0)
+	linear_damping: bpy.props.FloatProperty(name="Linear Damping", default=0.0, min=0.0, max=1.0)
+	angular_damping: bpy.props.FloatProperty(name="Angular Damping", default=0.0, min=0.0, max=1.0)
+	layer: bpy.props.IntProperty(name="Layer (bit)", default=1, min=0)
+	mask: bpy.props.StringProperty(name="Mask (int or |-expr)", description="e.g., 1|2|4 or 65535", default="65535")
+	# shape-specific
+	size_x: bpy.props.FloatProperty(name="Box X", default=1.0, min=0.0)
+	size_y: bpy.props.FloatProperty(name="Box Y", default=1.0, min=0.0)
+	size_z: bpy.props.FloatProperty(name="Box Z", default=1.0, min=0.0)
+	radius: bpy.props.FloatProperty(name="Radius", default=0.5, min=0.0)
+	height: bpy.props.FloatProperty(name="Height", default=1.0, min=0.0)
+
+	def invoke(self, context: "bpy.types.Context", event):
+		return context.window_manager.invoke_props_dialog(self)
+
+	def execute(self, context: "bpy.types.Context"):
+		try:
+			o = context.object
+			o["physics.rigidbody.type"] = str(self.body_type)
+			o["physics.rigidbody.shape"] = str(self.shape)
+			o["physics.rigidbody.mass"] = float(self.mass)
+			o["physics.rigidbody.friction"] = float(self.friction)
+			o["physics.rigidbody.restitution"] = float(self.restitution)
+			o["physics.rigidbody.linearDamping"] = float(self.linear_damping)
+			o["physics.rigidbody.angularDamping"] = float(self.angular_damping)
+			o["physics.layer"] = int(self.layer)
+			o["physics.mask"] = str(self.mask)
+			if self.shape == "box":
+				o["physics.size"] = [float(self.size_x), float(self.size_y), float(self.size_z)]
+			elif self.shape in ("sphere", "capsule"):
+				o["physics.radius"] = float(self.radius)
+			if self.shape == "capsule":
+				o["physics.height"] = float(self.height)
+			self.report({"INFO"}, "Set physics.rigidbody.* on object")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to set rigidbody")
+			return {"CANCELLED"}
+
+
+class THREE64_OT_add_joint(bpy.types.Operator):
+	bl_idname = "three64.add_joint"
+	bl_label = "Add Joint"
+	bl_description = "Append a physics.joint.N definition to this object"
+	bl_options = {"REGISTER", "UNDO"}
+
+	joint_type: bpy.props.EnumProperty(
+		name="Type",
+		description="Constraint type",
+		items=(
+			("p2p", "Point-to-Point", ""),
+			("hinge", "Hinge", ""),
+			("slider", "Slider", ""),
+			("fixed", "Fixed", ""),
+			("cone", "Cone Twist", ""),
+		),
+		default="p2p",
+	)
+	object_a: bpy.props.StringProperty(name="Object A (name)", default="")
+	object_b: bpy.props.StringProperty(name="Object B (name)", default="")
+	anchor_a: bpy.props.StringProperty(name="Anchor A [x,y,z]", default="[0,0,0]")
+	anchor_b: bpy.props.StringProperty(name="Anchor B [x,y,z]", default="[0,0,0]")
+	axis_a: bpy.props.StringProperty(name="Axis A [x,y,z]", default="[0,1,0]")
+	axis_b: bpy.props.StringProperty(name="Axis B [x,y,z]", default="[0,1,0]")
+	limits: bpy.props.StringProperty(name="Limits [min,max]", default="")
+
+	def invoke(self, context: "bpy.types.Context", event):
+		# Seed objects from selection
+		try:
+			sel = context.selected_objects
+			if isinstance(sel, list) and len(sel) >= 2:
+				self.object_a = sel[0].name
+				self.object_b = sel[1].name
+		except Exception:
+			pass
+		return context.window_manager.invoke_props_dialog(self)
+
+	def execute(self, context: "bpy.types.Context"):
+		try:
+			obj = context.object
+			# find next joint index
+			idx = 0
+			for k in obj.keys():
+				if isinstance(k, str) and k.startswith("physics.joint."):
+					try:
+						i = int(k.split(".")[2])
+						if i >= idx: idx = i + 1
+					except Exception:
+						continue
+			def _parse(s, fallback):
+				try:
+					v = json.loads(s)
+					if isinstance(v, list): return v
+				except Exception:
+					pass
+				return fallback
+			j = {
+				"type": str(self.joint_type),
+				"a": str(self.object_a or ""),
+				"b": str(self.object_b or ""),
+			}
+			if self.anchor_a: j["anchorA"] = _parse(self.anchor_a, [0,0,0])
+			if self.anchor_b: j["anchorB"] = _parse(self.anchor_b, [0,0,0])
+			if self.axis_a and self.joint_type == "hinge": j["axisA"] = _parse(self.axis_a, [0,1,0])
+			if self.axis_b and self.joint_type == "hinge": j["axisB"] = _parse(self.axis_b, [0,1,0])
+			if self.limits:
+				try:
+					j["limits"] = json.loads(self.limits)
+				except Exception:
+					pass
+			obj[f"physics.joint.{idx}"] = j
+			self.report({"INFO"}, f"Added physics.joint.{idx}")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to add joint")
+			return {"CANCELLED"}
 class THREE64_OT_bake_navmesh_json(bpy.types.Operator):
 	bl_idname = "three64.bake_navmesh_json"
 	bl_label = "Bake & Export NavMesh (JSON)"
@@ -1046,6 +1205,7 @@ class THREE64_OT_bake_navmesh_json(bpy.types.Operator):
 			# Build combined triangle soup
 			verts = []  # list of [x,y,z]
 			tris = []   # flat indices
+			areas = []  # list of { triIndexRange:[start,end], type, cost }
 			index_map = {}  # quantized coord -> index
 			quant = 1e-5
 			def key_from_xyz(x, y, z):
@@ -1067,6 +1227,7 @@ class THREE64_OT_bake_navmesh_json(bpy.types.Operator):
 			up = (0.0, 0.0, 1.0)  # Blender Z-up for slope test
 			for o in objects:
 				try:
+					tri_start = len(tris) // 3
 					ob_eval = o.evaluated_get(deps) if apply_mods else o
 					mesh = ob_eval.to_mesh(preserve_all_data_layers=False, depsgraph=deps) if apply_mods else o.to_mesh()
 					if not mesh:
@@ -1108,6 +1269,21 @@ class THREE64_OT_bake_navmesh_json(bpy.types.Operator):
 							o.to_mesh_clear()
 					except Exception:
 						pass
+					# Area tagging for this object's contributed triangles
+					tri_end = (len(tris) // 3) - 1
+					if tri_end >= tri_start:
+						try:
+							atype = o.get("area.type", None)
+							acost = o.get("area.cost", None)
+							entry = {"triIndexRange": [int(tri_start), int(tri_end)]}
+							if isinstance(atype, str) and atype:
+								entry["type"] = atype
+							if isinstance(acost, (int, float)):
+								entry["cost"] = float(acost)
+							if len(entry) > 1:
+								areas.append(entry)
+						except Exception:
+							pass
 				except Exception:
 					continue
 
@@ -1115,14 +1291,45 @@ class THREE64_OT_bake_navmesh_json(bpy.types.Operator):
 				self.report({"WARNING"}, "No walkable triangles produced with current settings")
 				return {"CANCELLED"}
 
+			# Off-mesh links via empties with custom props: navLink.to (target name), optional navLink.bidirectional, navLink.cost
+			links = []
+			try:
+				for o in scene.objects:
+					if o.type != "EMPTY":
+						continue
+					target_name = o.get("navLink.to", None)
+					if not isinstance(target_name, str) or not target_name:
+						continue
+					target = scene.objects.get(target_name)
+					if not target:
+						continue
+					a = o.matrix_world.translation
+					b = target.matrix_world.translation
+					link = {
+						"a": [float(a.x), float(a.y), float(a.z)],
+						"b": [float(b.x), float(b.y), float(b.z)],
+						"bidirectional": bool(o.get("navLink.bidirectional", True)),
+					}
+					cost_val = o.get("navLink.cost", None)
+					if isinstance(cost_val, (int, float)):
+						link["cost"] = float(cost_val)
+					links.append(link)
+			except Exception:
+				pass
+
 			os.makedirs(os.path.dirname(export_path), exist_ok=True)
 			payload = {
 				"vertices": verts,
 				"triangles": tris,
+				"areas": areas,
+				"links": links,
 				"meta": {
 					"propKey": prop_key,
 					"slopeMaxDeg": math.degrees(slope_max_rad) if slope_max_rad <= math.pi else slope_max_rad,
 					"convertAxes": bool(convert_axes),
+					"agentRadius": float(getattr(scene, "three64_nav_agent_radius", 0.3)),
+					"agentHeight": float(getattr(scene, "three64_nav_agent_height", 1.7)),
+					"stepHeight": float(getattr(scene, "three64_nav_step_height", 0.3)),
 				}
 			}
 			with open(export_path, "w", encoding="utf-8") as f:
@@ -1483,15 +1690,14 @@ classes = (
 	THREE64_OT_mark_navigable,
 	THREE64_OT_mark_double_sided,
 	THREE64_OT_mark_collider,
-	THREE64_OT_bake_navmesh_json,
-	THREE64_OT_visualize_navmesh_json,
-	VIEW3D_PT_three64_navmesh,
+	THREE64_OT_set_rigidbody,
 	THREE64_OT_set_archetype,
 	THREE64_OT_add_override,
 	THREE64_OT_add_trait,
 	THREE64_OT_set_pool,
 	THREE64_OT_set_inst_key,
 	THREE64_OT_insert_inst_tag,
+	THREE64_OT_add_joint,
 )
 def register():
 	for cls in classes:
@@ -1527,44 +1733,7 @@ def register():
 		bpy.types.OBJECT_PT_custom_props.append(_draw_into_custom_props)
 	except Exception:
 		pass
-	# NavMesh bake settings on the Scene
-	try:
-		bpy.types.Scene.three64_nav_prop_key = bpy.props.StringProperty(
-			name="Filter Property",
-			description="Only include meshes with this custom property set truthy",
-			default="navigable",
-		)
-		bpy.types.Scene.three64_nav_slope_max = bpy.props.FloatProperty(
-			name="Max Slope (deg)",
-			description="Maximum surface slope to consider walkable (Blender Z-up)",
-			default=45.0,
-			min=0.0, max=89.9,
-			subtype='ANGLE',
-			unit='ROTATION',
-		)
-		bpy.types.Scene.three64_nav_export_path = bpy.props.StringProperty(
-			name="Export Path",
-			description="Target JSON path (supports // relative to .blend)",
-			subtype="FILE_PATH",
-			default="//navmesh.json",
-		)
-		bpy.types.Scene.three64_nav_convert_axes = bpy.props.BoolProperty(
-			name="Convert to Three.js (Y-up)",
-			description="Convert Blender coords (X,Y,Z) to Three.js (X,Y,Z) as (x, z, -y)",
-			default=True,
-		)
-		bpy.types.Scene.three64_nav_apply_modifiers = bpy.props.BoolProperty(
-			name="Apply Modifiers",
-			description="Use evaluated meshes with modifiers applied",
-			default=True,
-		)
-		bpy.types.Scene.three64_nav_vis_wireframe = bpy.props.BoolProperty(
-			name="Wireframe View",
-			description="Display preview object in wireframe mode",
-			default=True,
-		)
-	except Exception:
-		pass
+	# NavMesh JSON exporters and scene props removed in favor of GLTF-authored navmesh
 
 
 def unregister():
@@ -1586,6 +1755,9 @@ def unregister():
 	for pname in (
 		"three64_nav_prop_key",
 		"three64_nav_slope_max",
+		"three64_nav_agent_radius",
+		"three64_nav_agent_height",
+		"three64_nav_step_height",
 		"three64_nav_export_path",
 		"three64_nav_convert_axes",
 		"three64_nav_apply_modifiers",

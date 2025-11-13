@@ -3,50 +3,60 @@ import { Vector3 } from "three";
 import { Component, ComponentRegistry } from "./component.js";
 import { loadJSON } from "./io.js";
 
-// Simple navigation mesh component with A* over triangle graph and optional funnel smoothing
+// Pending links registered before a NavMesh is available/loaded
+const __pendingNavLinks = [];
+
+// Simple navigation mesh component with A* over triangle graph and optional funnel smoothing.
+// Prefer building from a GLTF mesh node that has this component on it. Falls back to JSON if url provided.
 export class NavMesh extends Component {
-  constructor(ctx) {
-    super(ctx);
-    this.vertices = []; // Array<Vector3>
-    this.triangles = []; // Array<[i0,i1,i2]>
-    this.triangleCentroids = []; // Array<Vector3>
-    this.neighbors = []; // Array<Array<neighborTriangleIndex>>
-    this._loaded = false;
-  }
+	constructor(ctx) {
+		super(ctx);
+		this.vertices = []; // Array<Vector3>
+		this.triangles = []; // Array<[i0,i1,i2]>
+		this.triangleCentroids = []; // Array<Vector3>
+		this.neighbors = []; // Array<Array<neighborTriangleIndex>>
+		this._areaCost = []; // per-triangle traversal cost multiplier (>= 0.0), default 1
+		this._links = []; // [{ aTri, bTri, bidirectional, cost }]
+		this._loaded = false;
+	}
 
-  static getDefaultParams() {
-    return {
-      // Default location in build output. You can override via GLTF userData params or scene manifest mapping.
-      url: "assets/component-data/navmesh.json",
-      // If true, attempt to smooth the path using the funnel algorithm across triangle portals.
-      smooth: true,
-    };
-  }
+	static getDefaultParams() {
+		return {
+			// If present, legacy JSON navmesh source (vertices + triangles). If absent and object is set, geometry is used.
+			url: "",
+			// If true, attempt to smooth the path using the funnel algorithm across triangle portals.
+			smooth: true,
+		};
+	}
 
-  static getParamDescriptions() {
-    return [
-      { key: "url", label: "NavMesh URL", type: "string", description: "Relative URL to navmesh JSON (vertices + triangles)." },
-      { key: "smooth", label: "Smooth Path", type: "boolean", description: "Smooth using string-pulling (funnel algorithm)." },
-    ];
-  }
+	static getParamDescriptions() {
+		return [
+			{ key: "url", label: "Legacy JSON URL (optional)", type: "string", description: "If set, load navmesh from JSON; otherwise use this object's mesh." },
+			{ key: "smooth", label: "Smooth Path", type: "boolean", description: "Smooth using string-pulling (funnel algorithm)." },
+		];
+	}
 
-  async Initialize() {
-    try {
-      const opts = this.options || {};
-      // Resolve relative to site base
-      const url = new URL(opts.url || NavMesh.getDefaultParams().url, document.baseURI).toString();
-      const data = await loadJSON(url);
-      this._ingestData(data);
-      // Expose on game for convenience lookups
-      if (this.game) this.game.navMesh = this;
-      this._loaded = true;
-      // Optional debug log
-      // console.info(`[NavMesh] loaded: ${this.vertices.length} verts, ${this.triangles.length} tris`);
-    } catch (e) {
-      console.warn("NavMesh.Initialize: failed to load navmesh", e);
-      this._loaded = false;
-    }
-  }
+	async Initialize() {
+		try {
+			const opts = this.options || {};
+			if (this.object && this._buildFromObjectGeometry(this.object)) {
+				this._loaded = true;
+			} else if (opts.url) {
+				const url = new URL(opts.url, document.baseURI).toString();
+				const data = await loadJSON(url);
+				this._ingestData(data);
+				this._loaded = true;
+			} else {
+				console.warn("NavMesh.Initialize: no mesh object or url provided");
+				this._loaded = false;
+			}
+			if (this.game) this.game.navMesh = this;
+			if (this._loaded) this._applyPendingLinks();
+		} catch (e) {
+			console.warn("NavMesh.Initialize: failed", e);
+			this._loaded = false;
+		}
+	}
 
   _ingestData(data) {
     if (!data) return;
@@ -67,8 +77,75 @@ export class NavMesh extends Component {
         this.triangles.push([a, b, c]);
       }
     }
+		// Initialize defaults
+		this._areaCost = new Array(this.triangles.length).fill(1.0);
+		this._links = [];
     this._buildAcceleration();
   }
+
+	_buildFromObjectGeometry(root) {
+		try {
+			const verts = [];
+			const tris = [];
+			root.updateWorldMatrix(true, true);
+			root.traverse((o) => {
+				if (!o || !o.isMesh || !o.geometry) return;
+				const g = o.geometry;
+				const pos = g.getAttribute('position');
+				if (!pos) return;
+				const base = verts.length;
+				// push all vertices transformed to world
+				for (let i = 0; i < pos.count; i++) {
+					const v = new Vector3().fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+					verts.push(v);
+				}
+				const index = g.getIndex();
+				if (index && index.count >= 3) {
+					const arr = index.array;
+					for (let i = 0; i + 2 < arr.length; i += 3) {
+						tris.push([base + arr[i], base + arr[i + 1], base + arr[i + 2]]);
+					}
+				} else {
+					for (let i = 0; i + 2 < pos.count; i += 3) {
+						tris.push([base + i, base + i + 1, base + i + 2]);
+					}
+				}
+			});
+			if (verts.length === 0 || tris.length === 0) return false;
+			this.vertices = verts;
+			this.triangles = tris;
+			this._areaCost = new Array(this.triangles.length).fill(1.0);
+			this._links = [];
+			this._buildAcceleration();
+			return true;
+		} catch (e) {
+			console.warn("NavMesh._buildFromObjectGeometry failed", e);
+			return false;
+		}
+	}
+
+	_registerLinkByWorldPositions(aVec3, bVec3, bidirectional = true, cost = 1.0) {
+		if (!this._loaded) return;
+		const aTri = this._findContainingOrNearestTriangle(aVec3);
+		const bTri = this._findContainingOrNearestTriangle(bVec3);
+		if (aTri < 0 || bTri < 0) return;
+		this._links.push({ aTri, bTri, bidirectional: bidirectional !== false, cost: typeof cost === 'number' ? cost : 1.0 });
+		// connect neighbors immediately
+		try {
+			this.neighbors[aTri].push(bTri);
+			if (bidirectional !== false) this.neighbors[bTri].push(aTri);
+		} catch {}
+	}
+
+	_applyPendingLinks() {
+		for (let i = 0; i < __pendingNavLinks.length; i++) {
+			const p = __pendingNavLinks[i];
+			try {
+				this._registerLinkByWorldPositions(p.a, p.b, p.bidirectional, p.cost);
+			} catch {}
+		}
+		__pendingNavLinks.length = 0;
+	}
 
   _buildAcceleration() {
     // Centroids
@@ -96,6 +173,13 @@ export class NavMesh extends Component {
         this.neighbors[t1].push(t0);
       }
     }
+		// Add neighbor edges from off-mesh links
+		for (const l of this._links) {
+			if (l.aTri >= 0 && l.bTri >= 0) {
+				this.neighbors[l.aTri].push(l.bTri);
+				if (l.bidirectional !== false) this.neighbors[l.bTri].push(l.aTri);
+			}
+		}
   }
 
   findPath(start, end, opts) {
@@ -105,7 +189,7 @@ export class NavMesh extends Component {
     const startTri = this._findContainingOrNearestTriangle(startV);
     const endTri = this._findContainingOrNearestTriangle(endV);
     if (startTri < 0 || endTri < 0) return [];
-    const triPath = this._aStarTriangles(startTri, endTri, endV);
+		const triPath = this._aStarTriangles(startTri, endTri, endV);
     if (triPath.length === 0) return [];
     // Build waypoints: at minimum, triangle centroids; optionally funnel to portals
     const smooth = (opts && typeof opts.smooth === "boolean") ? opts.smooth : (this.options?.smooth !== false);
@@ -160,7 +244,20 @@ export class NavMesh extends Component {
       const neighbors = this.neighbors[current] || [];
       for (const nb of neighbors) {
         if (closed.has(nb)) continue;
-        const tentative = (gScore.get(current) || Infinity) + this.triangleCentroids[current].distanceTo(this.triangleCentroids[nb]);
+				// base edge length
+				let step = this.triangleCentroids[current].distanceTo(this.triangleCentroids[nb]);
+				// apply area cost multiplier (average of current and neighbor)
+				const c0 = this._areaCost[current] || 1.0;
+				const c1 = this._areaCost[nb] || 1.0;
+				step *= 0.5 * (c0 + c1);
+				// if this neighbor comes from an off-mesh link, add its additional cost
+				for (const l of this._links) {
+					if ((l.aTri === current && l.bTri === nb) || (l.bidirectional !== false && l.bTri === current && l.aTri === nb)) {
+						step *= l.cost || 1.0;
+						break;
+					}
+				}
+				const tentative = (gScore.get(current) || Infinity) + step;
         if (tentative < (gScore.get(nb) || Infinity)) {
           cameFrom.set(nb, current);
           gScore.set(nb, tentative);
@@ -288,5 +385,54 @@ class MinQueue {
 
 ComponentRegistry.register("NavMesh", NavMesh);
 ComponentRegistry.register("navmesh", NavMesh);
+
+// -----------------------------
+// NavLink component
+// -----------------------------
+export class NavLink extends Component {
+	static getDefaultParams() {
+		return {
+			targetName: "",
+			bidirectional: true,
+			cost: 1.0,
+		};
+	}
+	static getParamDescriptions() {
+		return [
+			{ key: "targetName", label: "Target Object Name", type: "string", description: "Name of the target object to link to." },
+			{ key: "bidirectional", label: "Bidirectional", type: "boolean", description: "If true, link works both ways." },
+			{ key: "cost", label: "Cost Multiplier", type: "number", min: 0.01, max: 10, step: 0.01, description: "Traversal cost multiplier for this link." },
+		];
+	}
+	Initialize() {
+		try {
+			const a = new Vector3();
+			this.object?.updateWorldMatrix?.(true, false);
+			this.object?.getWorldPosition?.(a);
+			const targetName = (this.options && this.options.targetName) || "";
+			let targetObj = null;
+			if (targetName && this.game?.rendererCore?.scene) {
+				try { targetObj = this.game.rendererCore.scene.getObjectByName(targetName) || null; } catch {}
+			}
+			const b = new Vector3();
+			if (targetObj && targetObj.getWorldPosition) targetObj.getWorldPosition(b); else b.copy(a);
+			const linkData = {
+				a,
+				b,
+				bidirectional: this.options?.bidirectional !== false,
+				cost: typeof this.options?.cost === "number" ? this.options.cost : 1.0,
+			};
+			// If NavMesh is available and loaded, register immediately; otherwise defer
+			const nav = (this.findComponent && this.findComponent('NavMesh')) || this.game?.navMesh || null;
+			if (nav && nav._loaded && typeof nav._registerLinkByWorldPositions === "function") {
+				nav._registerLinkByWorldPositions(linkData.a, linkData.b, linkData.bidirectional, linkData.cost);
+			} else {
+				__pendingNavLinks.push(linkData);
+			}
+		} catch {}
+	}
+}
+ComponentRegistry.register("NavLink", NavLink);
+ComponentRegistry.register("navlink", NavLink);
 
 

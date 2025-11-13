@@ -25,6 +25,13 @@ export class PhysicsWorld {
     this.dynamicsWorld = null;
     this._ammo = null; // subsystems
     this._rigidBodies = [];
+		// Collision filter defaults (bit masks)
+		this._defaultLayer = 1;   // group
+		this._defaultMask = 0xffff; // collides with all by default
+		// Map Three.js object -> Ammo body for lookups/joints
+		this._objectToBody = new Map();
+		// Track created joints/constraints for cleanup
+		this._joints = []; // { constraint, type, a, b }
     // Track Three.js objects bound to Ammo bodies for simulation sync
     this._entities = []; // { object, body, shape, type: 'dynamic'|'kinematic'|'static' }
     this._initAmmo(options);
@@ -324,7 +331,7 @@ export class PhysicsWorld {
   // --------------------------
   // Rigid bodies (dynamic/kinematic/static from objects)
   // --------------------------
-  addRigidBodyForObject(object3D, {
+	addRigidBodyForObject(object3D, {
     shape = "box",
     type = "dynamic",
     mass = undefined,
@@ -333,6 +340,14 @@ export class PhysicsWorld {
     linearDamping = undefined,
     angularDamping = undefined,
     mergeChildren = true,
+		// collision filters
+		layer = undefined,
+		mask = undefined,
+		// shape-specific overrides
+		size = undefined,       // [x,y,z] for box
+		radius = undefined,     // sphere/capsule radius
+		height = undefined,     // capsule height (cylinder part)
+		center = undefined,     // local center offset [x,y,z]
   } = {}) {
     if (!this.ammoReady || !this.dynamicsWorld || !this.Ammo) return null;
     const Ammo = this.Ammo;
@@ -340,7 +355,13 @@ export class PhysicsWorld {
     const shapeLower = String(shape || "box").toLowerCase();
     const typeLower = String(type || "dynamic").toLowerCase();
 
-    const shapeObj = this._buildAmmoShapeForObject(object3D, shapeLower, { mergeChildren });
+		const shapeObj = this._buildAmmoShapeForObject(object3D, shapeLower, {
+			mergeChildren,
+			size,
+			radius,
+			height,
+			center,
+		});
     if (!shapeObj) return null;
 
     // Determine mass: 0 for static and kinematic; positive for dynamic (default 1)
@@ -380,34 +401,71 @@ export class PhysicsWorld {
       body.setActivationState(4);
     }
 
-    this.dynamicsWorld.addRigidBody(body);
+		// Collision filters: Ammo supports group/mask when adding the body
+		const group = (typeof layer === "number" && layer > 0) ? layer : this._defaultLayer;
+		let maskBits;
+		if (Array.isArray(mask)) {
+			maskBits = 0;
+			for (let i = 0; i < mask.length; i++) {
+				const bit = Number(mask[i]) | 0;
+				if (bit > 0) maskBits |= bit;
+			}
+			if (maskBits === 0) maskBits = this._defaultMask;
+		} else if (typeof mask === "number") {
+			maskBits = mask;
+		} else {
+			maskBits = this._defaultMask;
+		}
+		// Use addRigidBody with filters when available
+		try {
+			this.dynamicsWorld.addRigidBody(body, group, maskBits);
+		} catch {
+			this.dynamicsWorld.addRigidBody(body);
+		}
     this._entities.push({ object: object3D, body, shape: shapeObj, type: typeLower });
+		this._objectToBody.set(object3D, body);
     return body;
   }
 
-  _buildAmmoShapeForObject(object3D, shape, { mergeChildren }) {
+	_buildAmmoShapeForObject(object3D, shape, { mergeChildren, size, radius, height, center }) {
     const Ammo = this.Ammo;
     try {
       if (shape === "box") {
-        const { min, max } = this._boundsForObject(object3D);
-        const hx = Math.max(1e-4, (max.x - min.x) / 2);
-        const hy = Math.max(1e-4, (max.y - min.y) / 2);
-        const hz = Math.max(1e-4, (max.z - min.z) / 2);
-        return new Ammo.btBoxShape(new Ammo.btVector3(hx, hy, hz));
+				let hx, hy, hz;
+				if (Array.isArray(size) && size.length >= 3) {
+					hx = Math.max(1e-4, Number(size[0]) / 2);
+					hy = Math.max(1e-4, Number(size[1]) / 2);
+					hz = Math.max(1e-4, Number(size[2]) / 2);
+				} else {
+					const { min, max } = this._boundsForObject(object3D);
+					hx = Math.max(1e-4, (max.x - min.x) / 2);
+					hy = Math.max(1e-4, (max.y - min.y) / 2);
+					hz = Math.max(1e-4, (max.z - min.z) / 2);
+				}
+				const shapeObj = new Ammo.btBoxShape(new Ammo.btVector3(hx, hy, hz));
+				return shapeObj;
       }
       if (shape === "sphere") {
-        const { min, max } = this._boundsForObject(object3D);
-        const rx = (max.x - min.x) / 2, ry = (max.y - min.y) / 2, rz = (max.z - min.z) / 2;
-        const radius = Math.max(1e-4, Math.max(rx, ry, rz));
-        return new Ammo.btSphereShape(radius);
+				let r = undefined;
+				if (typeof radius === "number") r = radius;
+				if (r == null) {
+					const { min, max } = this._boundsForObject(object3D);
+					const rx = (max.x - min.x) / 2, ry = (max.y - min.y) / 2, rz = (max.z - min.z) / 2;
+					r = Math.max(1e-4, Math.max(rx, ry, rz));
+				}
+				return new Ammo.btSphereShape(Math.max(1e-4, r));
       }
       if (shape === "capsule") {
-        const { min, max } = this._boundsForObject(object3D);
-        const sx = (max.x - min.x), sy = (max.y - min.y), sz = (max.z - min.z);
-        const radius = Math.max(1e-4, Math.min(sx, sz) * 0.5);
-        const height = Math.max(1e-4, sy - 2 * radius);
+				let r = typeof radius === "number" ? radius : undefined;
+				let h = typeof height === "number" ? height : undefined;
+				if (r == null || h == null) {
+					const { min, max } = this._boundsForObject(object3D);
+					const sx = (max.x - min.x), sy = (max.y - min.y), sz = (max.z - min.z);
+					if (r == null) r = Math.max(1e-4, Math.min(sx, sz) * 0.5);
+					if (h == null) h = Math.max(1e-4, sy - 2 * r);
+				}
         // Y-up capsule
-        return new Ammo.btCapsuleShape(radius, Math.max(0, height));
+				return new Ammo.btCapsuleShape(Math.max(1e-4, r), Math.max(0, h));
       }
       // default or explicit convex
       if (shape === "convex" || !shape) {
@@ -425,6 +483,138 @@ export class PhysicsWorld {
     } catch {}
     return null;
   }
+
+	// --------------------------
+	// Joint helpers
+	// --------------------------
+	addPointToPointJoint(objectA, objectB, { anchorA = [0, 0, 0], anchorB = [0, 0, 0] } = {}) {
+		if (!this.ammoReady || !this.dynamicsWorld || !this.Ammo) return null;
+		const Ammo = this.Ammo;
+		const bodyA = this._objectToBody.get(objectA);
+		const bodyB = this._objectToBody.get(objectB);
+		if (!bodyA || !bodyB) return null;
+		const pa = new Ammo.btVector3(anchorA[0] || 0, anchorA[1] || 0, anchorA[2] || 0);
+		const pb = new Ammo.btVector3(anchorB[0] || 0, anchorB[1] || 0, anchorB[2] || 0);
+		const c = new Ammo.btPoint2PointConstraint(bodyA, bodyB, pa, pb);
+		this.dynamicsWorld.addConstraint(c, true);
+		this._joints.push({ constraint: c, type: "p2p", a: objectA, b: objectB });
+		return c;
+	}
+
+	addHingeJoint(objectA, objectB, {
+		anchorA = [0, 0, 0],
+		anchorB = [0, 0, 0],
+		axisA = [0, 1, 0],
+		axisB = [0, 1, 0],
+		limits = undefined, // [min, max] in radians
+	} = {}) {
+		if (!this.ammoReady || !this.dynamicsWorld || !this.Ammo) return null;
+		const Ammo = this.Ammo;
+		const bodyA = this._objectToBody.get(objectA);
+		const bodyB = this._objectToBody.get(objectB);
+		if (!bodyA || !bodyB) return null;
+		const pa = new Ammo.btVector3(anchorA[0] || 0, anchorA[1] || 0, anchorA[2] || 0);
+		const pb = new Ammo.btVector3(anchorB[0] || 0, anchorB[1] || 0, anchorB[2] || 0);
+		const axA = new Ammo.btVector3(axisA[0] || 0, axisA[1] || 0, axisA[2] || 0);
+		const axB = new Ammo.btVector3(axisB[0] || 0, axisB[1] || 0, axisB[2] || 0);
+		const c = new Ammo.btHingeConstraint(bodyA, bodyB, pa, pb, axA, axB, false);
+		if (Array.isArray(limits) && limits.length >= 2) {
+			try { c.setLimit(Number(limits[0]) || 0, Number(limits[1]) || 0); } catch {}
+		}
+		this.dynamicsWorld.addConstraint(c, true);
+		this._joints.push({ constraint: c, type: "hinge", a: objectA, b: objectB });
+		return c;
+	}
+
+	addFixedJoint(objectA, objectB) {
+		if (!this.ammoReady || !this.dynamicsWorld || !this.Ammo) return null;
+		const Ammo = this.Ammo;
+		const bodyA = this._objectToBody.get(objectA);
+		const bodyB = this._objectToBody.get(objectB);
+		if (!bodyA || !bodyB) return null;
+		const trA = new Ammo.btTransform(); trA.setIdentity();
+		const trB = new Ammo.btTransform(); trB.setIdentity();
+		const c = new Ammo.btFixedConstraint(bodyA, bodyB, trA, trB);
+		this.dynamicsWorld.addConstraint(c, true);
+		this._joints.push({ constraint: c, type: "fixed", a: objectA, b: objectB });
+		return c;
+	}
+
+	addSliderJoint(objectA, objectB, {
+		frameA = { origin: [0, 0, 0], axisX: [1, 0, 0], axisZ: [0, 0, 1] },
+		frameB = { origin: [0, 0, 0], axisX: [1, 0, 0], axisZ: [0, 0, 1] },
+		linearLimits = undefined,  // [min, max]
+		angularLimits = undefined, // [min, max]
+	} = {}) {
+		if (!this.ammoReady || !this.dynamicsWorld || !this.Ammo) return null;
+		const Ammo = this.Ammo;
+		const bodyA = this._objectToBody.get(objectA);
+		const bodyB = this._objectToBody.get(objectB);
+		if (!bodyA || !bodyB) return null;
+		const trA = new Ammo.btTransform(); trA.setIdentity();
+		const trB = new Ammo.btTransform(); trB.setIdentity();
+		const setFrame = (tr, f) => {
+			const o = f.origin || [0, 0, 0];
+			tr.setOrigin(new Ammo.btVector3(o[0] || 0, o[1] || 0, o[2] || 0));
+			// Build basis from X/Z and derive Y
+			const x = f.axisX || [1, 0, 0];
+			const z = f.axisZ || [0, 0, 1];
+			const basis = new Ammo.btMatrix3x3(
+				x[0] || 1, x[1] || 0, x[2] || 0,
+				0, 1, 0,
+				z[0] || 0, z[1] || 0, z[2] || 1
+			);
+			tr.setBasis(basis);
+		};
+		setFrame(trA, frameA || {});
+		setFrame(trB, frameB || {});
+		const c = new Ammo.btSliderConstraint(bodyA, bodyB, trA, trB, true);
+		if (Array.isArray(linearLimits) && linearLimits.length >= 2) {
+			try { c.setLowerLinLimit(Number(linearLimits[0]) || 0); c.setUpperLinLimit(Number(linearLimits[1]) || 0); } catch {}
+		}
+		if (Array.isArray(angularLimits) && angularLimits.length >= 2) {
+			try { c.setLowerAngLimit(Number(angularLimits[0]) || 0); c.setUpperAngLimit(Number(angularLimits[1]) || 0); } catch {}
+		}
+		this.dynamicsWorld.addConstraint(c, true);
+		this._joints.push({ constraint: c, type: "slider", a: objectA, b: objectB });
+		return c;
+	}
+
+	addConeTwistJoint(objectA, objectB, {
+		frameA = { origin: [0, 0, 0] },
+		frameB = { origin: [0, 0, 0] },
+		limits = { swingSpan1: Math.PI / 4, swingSpan2: Math.PI / 4, twistSpan: Math.PI / 6 },
+	} = {}) {
+		if (!this.ammoReady || !this.dynamicsWorld || !this.Ammo) return null;
+		const Ammo = this.Ammo;
+		const bodyA = this._objectToBody.get(objectA);
+		const bodyB = this._objectToBody.get(objectB);
+		if (!bodyA || !bodyB) return null;
+		const trA = new Ammo.btTransform(); trA.setIdentity();
+		const trB = new Ammo.btTransform(); trB.setIdentity();
+		const oA = frameA.origin || [0, 0, 0];
+		const oB = frameB.origin || [0, 0, 0];
+		trA.setOrigin(new Ammo.btVector3(oA[0] || 0, oA[1] || 0, oA[2] || 0));
+		trB.setOrigin(new Ammo.btVector3(oB[0] || 0, oB[1] || 0, oB[2] || 0));
+		const c = new Ammo.btConeTwistConstraint(bodyA, bodyB, trA, trB);
+		if (limits) {
+			try {
+				c.setLimit(
+					typeof limits.swingSpan1 === "number" ? limits.swingSpan1 : Math.PI / 4,
+					typeof limits.swingSpan2 === "number" ? limits.swingSpan2 : Math.PI / 4,
+					typeof limits.twistSpan === "number" ? limits.twistSpan : Math.PI / 6
+				);
+			} catch {}
+		}
+		this.dynamicsWorld.addConstraint(c, true);
+		this._joints.push({ constraint: c, type: "cone", a: objectA, b: objectB });
+		return c;
+	}
+	removeJoint(constraint) {
+		if (!constraint || !this.dynamicsWorld) return;
+		try { this.dynamicsWorld.removeConstraint(constraint); } catch {}
+		this._joints = this._joints.filter(j => j.constraint !== constraint);
+	}
 
   _collectWorldPoints(object3D, { mergeChildren = true } = {}) {
     const pts = [];

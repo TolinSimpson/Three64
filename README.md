@@ -1,6 +1,6 @@
 # Three64 Engine
 
-A lightweight Three.js-based engine with optional Ammo.js physics and a Blender-driven authoring workflow.
+A lightweight Three.js-based engine with Ammo.js physics and a Blender-driven authoring workflow.
 
 This README is a quick-start. Full docs live in `src/docs/pages/` and render directly on GitHub.
 

@@ -314,6 +314,11 @@ const config = {
                 noErrorOnMissing: true,
               },
               {
+                from: path.resolve(__dirname, '../src/assets/default-component-data'),
+                to: path.resolve(__dirname, '../public/build/assets/component-data'),
+                noErrorOnMissing: true,
+              },
+              {
                 from: path.resolve(__dirname, '../src/assets/ui'),
                 to: path.resolve(__dirname, '../public/build/assets/ui'),
                 noErrorOnMissing: true,
@@ -344,6 +349,11 @@ const config = {
               {
                 from: path.resolve(__dirname, '../src/assets/css'),
                 to: path.resolve(__dirname, '../public/build/assets/css'),
+                noErrorOnMissing: true,
+              },
+              {
+                from: path.resolve(__dirname, '../src/assets/default-component-data'),
+                to: path.resolve(__dirname, '../public/build/assets/component-data'),
                 noErrorOnMissing: true,
               },
             ]),
