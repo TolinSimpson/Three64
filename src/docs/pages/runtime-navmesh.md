@@ -1,33 +1,40 @@
-## Navigation mesh (GLTF-authored)
+## Navigation (runtime heightfield)
 
-- Author a navmesh directly as a mesh node inside your GLTF scene.
-  - Add a custom property `component = "NavMesh"` to that mesh in your DCC.
-  - The runtime reads the mesh geometry (positions + indices) and builds the navgraph.
-  - Multiple meshes under the same node are supported; world-space vertices are baked at load.
+- Tag walkable meshes in your GLTF with `userData.navigable = true`.
+- At load, the engine builds a 2.5D heightfield grid over the scene bounds:
+  - Downward raycasts over the tagged meshes determine per‑cell ground height.
+  - Cells are marked walkable if they meet slope and step‑height constraints.
+  - Optional per‑object cost: set `userData.navigableCost` (or `navCost`/`cost`) on a mesh to scale movement cost.
 
-- Optional legacy fallback
-  - You may still provide `{ url }` in NavMesh params to load a legacy JSON, but this is no longer recommended.
+- No baking step is required; just set userData on your GLTF meshes.
 
-- Links as components
-  - Create an empty (or any node) and add `component = "NavLink"` with params:
-    - `targetName`: Name of the target object to link to.
-    - `bidirectional`: true/false (default true).
-    - `cost`: optional traversal cost multiplier (default 1.0).
-  - At load, links register themselves with the nearest triangles on the NavMesh.
+### Parameters (NavMesh component)
+- `cellSize` (m): grid resolution (default 0.5)
+- `maxSlopeDeg` (deg): maximum walkable surface slope (default 45)
+- `stepHeight` (m): maximum vertical delta between neighbor cells (default 0.4)
+- `agentRadius` (m): used for future clearance logic (default 0.3)
+- `smooth` (bool): simple waypoint smoothing (default true)
 
-- Runtime APIs
-  - `NavMesh.findPath(startVec3, endVec3, { smooth })`
-  - Links are integrated into A* as neighbor edges; costs affect traversal.
+### Links (optional)
+- Add `NavLink` component to any node to connect two points:
+  - `targetName`: name of the target object
+  - `bidirectional` (default true)
+  - `cost` (default 1.0)
+- At load, each link snaps to the nearest grid nodes and adds edges into the graph.
 
-- Agents
-  - Use `Agent` component (`src/runtime/agent.js`) with `useNavMesh: true` to follow paths.
+### API
+- `NavMesh.findPath(start: Vector3, end: Vector3, { smooth?: boolean }) => Vector3[]`
+- Returns an array of world positions (Y from sampled ground).
 
-# runtime/navmesh.js
+### Agents
+- Use `Agent` (`src/runtime/agent.js`) with `useNavMesh: true` to follow paths.
 
-## API
-- `class NavMesh extends Component`: Loads a JSON navmesh and provides path queries.
+### Authoring summary
+- On walkable geometry: `userData.navigable = true`
+- Optional: `userData.navigableCost = number`
+- Add `NavMesh` anywhere in the scene (e.g., root component mapping) to enable navigation.
 
-## Usage
-Add a `NavMesh` component to an object (via Blender or registry) and set its `url` to your navmesh JSON. Agents can then request paths.
+### Notes
+- For large worlds, consider tiling cell generation; current implementation builds a single grid over scene bounds.
 
 

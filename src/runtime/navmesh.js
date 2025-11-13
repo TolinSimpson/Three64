@@ -1,5 +1,5 @@
 'use strict';
-import { Vector3 } from "three";
+import { Vector3, Raycaster, Box3 } from "three";
 import { Component, ComponentRegistry } from "./component.js";
 import { loadJSON } from "./io.js";
 
@@ -11,45 +11,49 @@ const __pendingNavLinks = [];
 export class NavMesh extends Component {
 	constructor(ctx) {
 		super(ctx);
-		this.vertices = []; // Array<Vector3>
-		this.triangles = []; // Array<[i0,i1,i2]>
-		this.triangleCentroids = []; // Array<Vector3>
-		this.neighbors = []; // Array<Array<neighborTriangleIndex>>
-		this._areaCost = []; // per-triangle traversal cost multiplier (>= 0.0), default 1
-		this._links = []; // [{ aTri, bTri, bidirectional, cost }]
+		this._grid = null; // { originX, originZ, nx, nz, cellSize, layersPerCell, cells: Array<{ y:number, cost:number }|null> }
+		this._cfg = null;
+		this._links = []; // [{ aIdx, bIdx, bidirectional, cost }]
 		this._loaded = false;
 	}
 
 	static getDefaultParams() {
 		return {
-			// If present, legacy JSON navmesh source (vertices + triangles). If absent and object is set, geometry is used.
-			url: "",
-			// If true, attempt to smooth the path using the funnel algorithm across triangle portals.
+			cellSize: 0.5,
+			maxGridSize: 512,
+			maxSlopeDeg: 45,
+			stepHeight: 0.4,
+			agentRadius: 0.3,
+			padding: 0.5,
+			raycastHeight: 50,
 			smooth: true,
 		};
 	}
 
 	static getParamDescriptions() {
 		return [
-			{ key: "url", label: "Legacy JSON URL (optional)", type: "string", description: "If set, load navmesh from JSON; otherwise use this object's mesh." },
-			{ key: "smooth", label: "Smooth Path", type: "boolean", description: "Smooth using string-pulling (funnel algorithm)." },
+			{ key: "cellSize", label: "Cell Size (m)", type: "number", min: 0.1, max: 2, step: 0.05, description: "Grid cell resolution." },
+			{ key: "maxSlopeDeg", label: "Max Slope (deg)", type: "number", min: 0, max: 89.9, step: 0.1, description: "Maximum walkable surface slope." },
+			{ key: "stepHeight", label: "Step Height (m)", type: "number", min: 0, max: 1, step: 0.01, description: "Max vertical delta between neighbors." },
+			{ key: "agentRadius", label: "Agent Radius (m)", type: "number", min: 0.05, max: 1.0, step: 0.01, description: "Clearance radius (reserved for future use)." },
+			{ key: "smooth", label: "Smooth Path", type: "boolean", description: "Merge linear waypoint sequences." },
 		];
 	}
 
 	async Initialize() {
 		try {
 			const opts = this.options || {};
-			if (this.object && this._buildFromObjectGeometry(this.object)) {
-				this._loaded = true;
-			} else if (opts.url) {
-				const url = new URL(opts.url, document.baseURI).toString();
-				const data = await loadJSON(url);
-				this._ingestData(data);
-				this._loaded = true;
-			} else {
-				console.warn("NavMesh.Initialize: no mesh object or url provided");
-				this._loaded = false;
-			}
+			this._cfg = {
+				cellSize: Number(opts.cellSize ?? NavMesh.getDefaultParams().cellSize) || 0.5,
+				maxGridSize: Number(opts.maxGridSize ?? NavMesh.getDefaultParams().maxGridSize) || 512,
+				maxSlopeDeg: Number(opts.maxSlopeDeg ?? NavMesh.getDefaultParams().maxSlopeDeg) || 45,
+				stepHeight: Number(opts.stepHeight ?? NavMesh.getDefaultParams().stepHeight) || 0.4,
+				agentRadius: Number(opts.agentRadius ?? NavMesh.getDefaultParams().agentRadius) || 0.3,
+				padding: Number(opts.padding ?? NavMesh.getDefaultParams().padding) || 0.5,
+				raycastHeight: Number(opts.raycastHeight ?? NavMesh.getDefaultParams().raycastHeight) || 50,
+				smooth: opts.smooth !== false,
+			};
+			this._buildFromSceneNavigables();
 			if (this.game) this.game.navMesh = this;
 			if (this._loaded) this._applyPendingLinks();
 		} catch (e) {
@@ -58,83 +62,237 @@ export class NavMesh extends Component {
 		}
 	}
 
-  _ingestData(data) {
-    if (!data) return;
-    const vertsIn = Array.isArray(data.vertices) ? data.vertices : [];
-    const trisIn = Array.isArray(data.triangles) ? data.triangles : [];
-    this.vertices = vertsIn.map((v) => {
-      const x = Number(v[0]) || 0;
-      const y = Number(v[1]) || 0;
-      const z = Number(v[2]) || 0;
-      return new Vector3(x, y, z);
-    });
-    this.triangles = [];
-    for (let i = 0; i + 2 < trisIn.length; i += 3) {
-      const a = trisIn[i] | 0;
-      const b = trisIn[i + 1] | 0;
-      const c = trisIn[i + 2] | 0;
-      if (a >= 0 && b >= 0 && c >= 0 && a < this.vertices.length && b < this.vertices.length && c < this.vertices.length) {
-        this.triangles.push([a, b, c]);
-      }
-    }
-		// Initialize defaults
-		this._areaCost = new Array(this.triangles.length).fill(1.0);
-		this._links = [];
-    this._buildAcceleration();
-  }
-
-	_buildFromObjectGeometry(root) {
+	_buildFromSceneNavigables() {
 		try {
-			const verts = [];
-			const tris = [];
-			root.updateWorldMatrix(true, true);
-			root.traverse((o) => {
+			const scene = this.game?.rendererCore?.scene;
+			if (!scene) { this._loaded = false; return; }
+			const navigableMeshes = [];
+			const tmpBox = new Box3();
+			const bounds = new Box3();
+			scene.updateWorldMatrix(true, true);
+			scene.traverse((o) => {
 				if (!o || !o.isMesh || !o.geometry) return;
-				const g = o.geometry;
-				const pos = g.getAttribute('position');
-				if (!pos) return;
-				const base = verts.length;
-				// push all vertices transformed to world
-				for (let i = 0; i < pos.count; i++) {
-					const v = new Vector3().fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
-					verts.push(v);
-				}
-				const index = g.getIndex();
-				if (index && index.count >= 3) {
-					const arr = index.array;
-					for (let i = 0; i + 2 < arr.length; i += 3) {
-						tris.push([base + arr[i], base + arr[i + 1], base + arr[i + 2]]);
-					}
-				} else {
-					for (let i = 0; i + 2 < pos.count; i += 3) {
-						tris.push([base + i, base + i + 1, base + i + 2]);
-					}
-				}
+				const ud = o.userData || {};
+				if (!ud.navigable && !ud.Navigable && ud["navigable"] !== true) return;
+				navigableMeshes.push(o);
+				try { tmpBox.setFromObject(o); bounds.union(tmpBox); } catch {}
 			});
-			if (verts.length === 0 || tris.length === 0) return false;
-			this.vertices = verts;
-			this.triangles = tris;
-			this._areaCost = new Array(this.triangles.length).fill(1.0);
-			this._links = [];
-			this._buildAcceleration();
-			return true;
+			if (navigableMeshes.length === 0) {
+				console.warn("NavMesh: no navigable meshes found (userData.navigable)");
+				this._loaded = false;
+				return;
+			}
+			bounds.min.x -= this._cfg.padding; bounds.min.z -= this._cfg.padding;
+			bounds.max.x += this._cfg.padding; bounds.max.z += this._cfg.padding;
+			const width = Math.max(0.001, bounds.max.x - bounds.min.x);
+			const depth = Math.max(0.001, bounds.max.z - bounds.min.z);
+			const nx = Math.min(this._cfg.maxGridSize, Math.max(1, Math.ceil(width / this._cfg.cellSize)));
+			const nz = Math.min(this._cfg.maxGridSize, Math.max(1, Math.ceil(depth / this._cfg.cellSize)));
+			const originX = bounds.min.x;
+			const originZ = bounds.min.z;
+
+			const ray = new Raycaster();
+			ray.firstHitOnly = true;
+			const upY = Math.max(bounds.max.y + this._cfg.raycastHeight, bounds.max.y + 10);
+			const down = new Vector3(0, -1, 0);
+			const maxFar = (bounds.max.y - bounds.min.y) + this._cfg.raycastHeight * 2;
+			const cosSlope = Math.cos((this._cfg.maxSlopeDeg || 45) * Math.PI / 180);
+
+			const cells = new Array(nx * nz).fill(null);
+			const idx = (xi, zi) => (zi * nx + xi);
+
+			for (let zi = 0; zi < nz; zi++) {
+				const z = originZ + (zi + 0.5) * this._cfg.cellSize;
+				for (let xi = 0; xi < nx; xi++) {
+					const x = originX + (xi + 0.5) * this._cfg.cellSize;
+					ray.set(new Vector3(x, upY, z), down);
+					ray.far = maxFar;
+					const hits = ray.intersectObjects(navigableMeshes, false);
+					if (!hits || hits.length === 0) continue;
+					let chosen = null;
+					for (let h = 0; h < hits.length; h++) {
+						const hit = hits[h];
+						const n = hit.face?.normal || null;
+						if (!n) { chosen = hit; break; }
+						const dotUp = Math.abs(n.y);
+						if (dotUp >= cosSlope) { chosen = hit; break; }
+					}
+					if (!chosen) continue;
+					const y = chosen.point.y;
+					let costMul = 1.0;
+					try {
+						const ud = chosen.object?.userData || {};
+						const c = ud.navigableCost ?? ud.navCost ?? ud.cost;
+						if (typeof c === "number" && c > 0) costMul = c;
+					} catch {}
+					cells[idx(xi, zi)] = { y, cost: costMul };
+				}
+			}
+
+			this._grid = { originX, originZ, nx, nz, cellSize: this._cfg.cellSize, layersPerCell: 1, cells };
+			this._loaded = true;
 		} catch (e) {
-			console.warn("NavMesh._buildFromObjectGeometry failed", e);
-			return false;
+			console.warn("NavMesh._buildFromSceneNavigables failed", e);
+			this._loaded = false;
 		}
 	}
 
+	_cellIndexForXZ(x, z) {
+		const g = this._grid;
+		if (!g) return -1;
+		const xi = Math.floor((x - g.originX) / g.cellSize);
+		const zi = Math.floor((z - g.originZ) / g.cellSize);
+		if (xi < 0 || zi < 0 || xi >= g.nx || zi >= g.nz) return -1;
+		return (zi * g.nx + xi);
+	}
+
+	_worldForIndex(i) {
+		const g = this._grid;
+		const xi = i % g.nx;
+		const zi = (i / g.nx) | 0;
+		const x = g.originX + (xi + 0.5) * g.cellSize;
+		const z = g.originZ + (zi + 0.5) * g.cellSize;
+		return { x, z };
+	}
+
+	_findClosestNodeForPosition(p) {
+		const g = this._grid;
+		if (!g) return -1;
+		const center = this._cellIndexForXZ(p.x, p.z);
+		if (center >= 0 && g.cells[center]) return center;
+		const maxRing = 3;
+		for (let ring = 1; ring <= maxRing; ring++) {
+			for (let dz = -ring; dz <= ring; dz++) {
+				for (let dx = -ring; dx <= ring; dx++) {
+					if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
+					const xi = (center % g.nx) + dx;
+					const zi = ((center / g.nx) | 0) + dz;
+					if (xi < 0 || zi < 0 || xi >= g.nx || zi >= g.nz) continue;
+					const i = zi * g.nx + xi;
+					if (g.cells[i]) return i;
+				}
+			}
+		}
+		return -1;
+	}
+
+	_neighbors(i) {
+		const g = this._grid;
+		if (!g) return [];
+		const xi = i % g.nx;
+		const zi = (i / g.nx) | 0;
+		const out = [];
+		for (let dz = -1; dz <= 1; dz++) {
+			for (let dx = -1; dx <= 1; dx++) {
+				if (dx === 0 && dz === 0) continue;
+				const nx = xi + dx, nz = zi + dz;
+				if (nx < 0 || nz < 0 || nx >= g.nx || nz >= g.nz) continue;
+				const j = nz * g.nx + nx;
+				const a = g.cells[i], b = g.cells[j];
+				if (!a || !b) continue;
+				if (Math.abs(a.y - b.y) > this._cfg.stepHeight) continue;
+				const dist = Math.hypot(dx, dz) * g.cellSize;
+				const cost = dist * 0.5 * ((a.cost || 1) + (b.cost || 1));
+				out.push({ j, cost });
+			}
+		}
+		for (let k = 0; k < this._links.length; k++) {
+			const L = this._links[k];
+			if (L.aIdx === i) out.push({ j: L.bIdx, cost: L.cost || g.cellSize });
+			if (L.bidirectional !== false && L.bIdx === i) out.push({ j: L.aIdx, cost: L.cost || g.cellSize });
+		}
+		return out;
+	}
+
+	heuristic(i, goal) {
+		const a = this._worldForIndex(i);
+		const b = this._worldForIndex(goal);
+		return Math.hypot(a.x - b.x, a.z - b.z);
+	}
+
+	findPath(start, end, opts) {
+		if (!this._loaded || !this._grid) return [];
+		const startV = start instanceof Vector3 ? start : new Vector3(start?.x || 0, start?.y || 0, start?.z || 0);
+		const endV = end instanceof Vector3 ? end : new Vector3(end?.x || 0, end?.y || 0, end?.z || 0);
+		const startIdx = this._findClosestNodeForPosition(startV);
+		const endIdx = this._findClosestNodeForPosition(endV);
+		if (startIdx < 0 || endIdx < 0) return [];
+		const g = this._grid;
+
+		const open = new MinQueue();
+		const cameFrom = new Map();
+		const gScore = new Map();
+		const fScore = new Map();
+		gScore.set(startIdx, 0);
+		fScore.set(startIdx, this.heuristic(startIdx, endIdx));
+		open.push(startIdx, fScore.get(startIdx));
+		const closed = new Set();
+
+		while (!open.isEmpty()) {
+			const current = open.pop();
+			if (current === endIdx) {
+				const pathIdx = [current];
+				let cur = current;
+				while (cameFrom.has(cur)) {
+					cur = cameFrom.get(cur);
+					pathIdx.push(cur);
+				}
+				pathIdx.reverse();
+				const pts = [];
+				for (let k = 0; k < pathIdx.length; k++) {
+					const i = pathIdx[k];
+					const c = g.cells[i];
+					if (!c) continue;
+					const w = this._worldForIndex(i);
+					pts.push(new Vector3(w.x, c.y, w.z));
+				}
+				return (opts?.smooth ?? this._cfg.smooth) ? this._smoothPath(pts) : pts;
+			}
+			closed.add(current);
+			const neighbors = this._neighbors(current);
+			for (const nb of neighbors) {
+				const j = nb.j;
+				if (closed.has(j)) continue;
+				const tentative = (gScore.get(current) || Infinity) + nb.cost;
+				if (tentative < (gScore.get(j) || Infinity)) {
+					cameFrom.set(j, current);
+					gScore.set(j, tentative);
+					const f = tentative + this.heuristic(j, endIdx);
+					fScore.set(j, f);
+					open.push(j, f);
+				}
+			}
+		}
+		return [];
+	}
+
+	_smoothPath(points) {
+		if (!Array.isArray(points) || points.length <= 2) return points || [];
+		const out = [points[0].clone()];
+		for (let i = 1; i + 1 < points.length; i++) {
+			const prev = out[out.length - 1];
+			const cur = points[i];
+			const next = points[i + 1];
+			const v1x = cur.x - prev.x, v1z = cur.z - prev.z;
+			const v2x = next.x - cur.x, v2z = next.z - cur.z;
+			const dot = v1x * v2x + v1z * v2z;
+			const l1 = Math.hypot(v1x, v1z), l2 = Math.hypot(v2x, v2z);
+			if (l1 > 1e-4 && l2 > 1e-4) {
+				const cos = dot / (l1 * l2);
+				if (cos > 0.996) continue;
+			}
+			out.push(cur.clone());
+		}
+		out.push(points[points.length - 1].clone());
+		return out;
+	}
+
 	_registerLinkByWorldPositions(aVec3, bVec3, bidirectional = true, cost = 1.0) {
-		if (!this._loaded) return;
-		const aTri = this._findContainingOrNearestTriangle(aVec3);
-		const bTri = this._findContainingOrNearestTriangle(bVec3);
-		if (aTri < 0 || bTri < 0) return;
-		this._links.push({ aTri, bTri, bidirectional: bidirectional !== false, cost: typeof cost === 'number' ? cost : 1.0 });
-		// connect neighbors immediately
-		try {
-			this.neighbors[aTri].push(bTri);
-			if (bidirectional !== false) this.neighbors[bTri].push(aTri);
-		} catch {}
+		if (!this._loaded || !this._grid) return;
+		const aIdx = this._findClosestNodeForPosition(aVec3);
+		const bIdx = this._findClosestNodeForPosition(bVec3);
+		if (aIdx < 0 || bIdx < 0) return;
+		this._links.push({ aIdx, bIdx, bidirectional: bidirectional !== false, cost: typeof cost === "number" ? cost : 1.0 });
 	}
 
 	_applyPendingLinks() {
@@ -183,188 +341,88 @@ export class NavMesh extends Component {
   }
 
   findPath(start, end, opts) {
-    if (!this._loaded || !this.vertices.length || !this.triangles.length) return [];
+    if (!this._loaded || !this._grid) return [];
     const startV = start instanceof Vector3 ? start : new Vector3(start?.x || 0, start?.y || 0, start?.z || 0);
     const endV = end instanceof Vector3 ? end : new Vector3(end?.x || 0, end?.y || 0, end?.z || 0);
-    const startTri = this._findContainingOrNearestTriangle(startV);
-    const endTri = this._findContainingOrNearestTriangle(endV);
-    if (startTri < 0 || endTri < 0) return [];
-		const triPath = this._aStarTriangles(startTri, endTri, endV);
-    if (triPath.length === 0) return [];
-    // Build waypoints: at minimum, triangle centroids; optionally funnel to portals
-    const smooth = (opts && typeof opts.smooth === "boolean") ? opts.smooth : (this.options?.smooth !== false);
-    if (!smooth) {
-      const pts = [startV.clone()];
-      for (const ti of triPath) pts.push(this.triangleCentroids[ti].clone());
-      pts.push(endV.clone());
-      return pts;
-    }
-    return this._funnelPath(startV, endV, triPath);
-  }
+    const startIdx = this._findClosestNodeForPosition(startV);
+    const endIdx = this._findClosestNodeForPosition(endV);
+    if (startIdx < 0 || endIdx < 0) return [];
+    const g = this._grid;
 
-  _findContainingOrNearestTriangle(p) {
-    let bestIdx = -1;
-    let bestDist = Infinity;
-    const tmp = new Vector3();
-    for (let t = 0; t < this.triangles.length; t++) {
-      const [a, b, c] = this.triangles[t];
-      const va = this.vertices[a], vb = this.vertices[b], vc = this.vertices[c];
-      if (pointInTriangle2D(p, va, vb, vc)) return t;
-      // distance to centroid as fallback
-      const d = tmp.copy(this.triangleCentroids[t]).sub(p).lengthSq();
-      if (d < bestDist) { bestDist = d; bestIdx = t; }
-    }
-    return bestIdx;
-  }
-
-  _aStarTriangles(startTri, endTri, endPoint) {
     const open = new MinQueue();
-    const cameFrom = new Map(); // tri -> prev tri
+    const cameFrom = new Map();
     const gScore = new Map();
     const fScore = new Map();
-    const h = (t) => this.triangleCentroids[t].distanceTo(endPoint);
-    gScore.set(startTri, 0);
-    fScore.set(startTri, h(startTri));
-    open.push(startTri, fScore.get(startTri));
+    gScore.set(startIdx, 0);
+    fScore.set(startIdx, this.heuristic(startIdx, endIdx));
+    open.push(startIdx, fScore.get(startIdx));
     const closed = new Set();
+
     while (!open.isEmpty()) {
       const current = open.pop();
-      if (current === endTri) {
-        // reconstruct
-        const path = [current];
+      if (current === endIdx) {
+        const pathIdx = [current];
         let cur = current;
         while (cameFrom.has(cur)) {
           cur = cameFrom.get(cur);
-          path.push(cur);
+          pathIdx.push(cur);
         }
-        path.reverse();
-        return path;
+        pathIdx.reverse();
+        const pts = [];
+        for (let k = 0; k < pathIdx.length; k++) {
+          const i = pathIdx[k];
+          const c = g.cells[i];
+          if (!c) continue;
+          const w = this._worldForIndex(i);
+          pts.push(new Vector3(w.x, c.y, w.z));
+        }
+        return (opts?.smooth ?? this._cfg.smooth) ? this._smoothPath(pts) : pts;
       }
       closed.add(current);
-      const neighbors = this.neighbors[current] || [];
+      const neighbors = this._neighbors(current);
       for (const nb of neighbors) {
-        if (closed.has(nb)) continue;
-				// base edge length
-				let step = this.triangleCentroids[current].distanceTo(this.triangleCentroids[nb]);
-				// apply area cost multiplier (average of current and neighbor)
-				const c0 = this._areaCost[current] || 1.0;
-				const c1 = this._areaCost[nb] || 1.0;
-				step *= 0.5 * (c0 + c1);
-				// if this neighbor comes from an off-mesh link, add its additional cost
-				for (const l of this._links) {
-					if ((l.aTri === current && l.bTri === nb) || (l.bidirectional !== false && l.bTri === current && l.aTri === nb)) {
-						step *= l.cost || 1.0;
-						break;
-					}
-				}
-				const tentative = (gScore.get(current) || Infinity) + step;
-        if (tentative < (gScore.get(nb) || Infinity)) {
-          cameFrom.set(nb, current);
-          gScore.set(nb, tentative);
-          const f = tentative + h(nb);
-          fScore.set(nb, f);
-          open.push(nb, f);
+        const j = nb.j;
+        if (closed.has(j)) continue;
+        const tentative = (gScore.get(current) || Infinity) + nb.cost;
+        if (tentative < (gScore.get(j) || Infinity)) {
+          cameFrom.set(j, current);
+          gScore.set(j, tentative);
+          const f = tentative + this.heuristic(j, endIdx);
+          fScore.set(j, f);
+          open.push(j, f);
         }
       }
     }
     return [];
   }
 
-  _funnelPath(startV, endV, triPath) {
-    // Build portals between consecutive triangles as shared edges
-    const portals = [];
-    const edgeKey = (i0, i1) => i0 < i1 ? `${i0}_${i1}` : `${i1}_${i0}`;
-    for (let i = 0; i + 1 < triPath.length; i++) {
-      const t0 = triPath[i], t1 = triPath[i + 1];
-      const [a0, b0, c0] = this.triangles[t0];
-      const [a1, b1, c1] = this.triangles[t1];
-      const set0 = new Set([a0, b0, c0]);
-      const shared = [a1, b1, c1].filter(i => set0.has(i));
-      if (shared.length !== 2) continue;
-      const v0 = this.vertices[shared[0]];
-      const v1 = this.vertices[shared[1]];
-      portals.push([v0, v1]);
-    }
-    // Insert start and end as degenerate portals
-    portals.unshift([startV.clone(), startV.clone()]);
-    portals.push([endV.clone(), endV.clone()]);
-    // String pulling (funnel)
-    const pts = [];
-    let apex = startV.clone();
-    let left = portals[1][0].clone();
-    let right = portals[1][1].clone();
-    let apexIndex = 0, leftIndex = 1, rightIndex = 1;
-    pts.push(apex.clone());
-    for (let i = 2; i < portals.length; i++) {
-      const pLeft = portals[i][0];
-      const pRight = portals[i][1];
-      // Update right
-      if (triarea2(apex, right, pRight) <= 0.0) {
-        if (apex.equals(right) || triarea2(apex, left, pRight) > 0.0) {
-          right = pRight.clone();
-          rightIndex = i;
-        } else {
-          pts.push(left.clone());
-          apex = left.clone();
-          apexIndex = leftIndex;
-          left = apex.clone();
-          right = apex.clone();
-          i = apexIndex;
-          leftIndex = apexIndex;
-          rightIndex = apexIndex;
-          continue;
-        }
-      }
-      // Update left
-      if (triarea2(apex, left, pLeft) >= 0.0) {
-        if (apex.equals(left) || triarea2(apex, right, pLeft) < 0.0) {
-          left = pLeft.clone();
-          leftIndex = i;
-        } else {
-          pts.push(right.clone());
-          apex = right.clone();
-          apexIndex = rightIndex;
-          left = apex.clone();
-          right = apex.clone();
-          i = apexIndex;
-          leftIndex = apexIndex;
-          rightIndex = apexIndex;
-          continue;
+  _findClosestNodeForPosition(p) {
+    const g = this._grid;
+    if (!g) return -1;
+    const center = this._cellIndexForXZ(p.x, p.z);
+    if (center >= 0 && g.cells[center]) return center;
+    const maxRing = 3;
+    for (let ring = 1; ring <= maxRing; ring++) {
+      for (let dz = -ring; dz <= ring; dz++) {
+        for (let dx = -ring; dx <= ring; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
+          const xi = (center % g.nx) + dx;
+          const zi = ((center / g.nx) | 0) + dz;
+          if (xi < 0 || zi < 0 || xi >= g.nx || zi >= g.nz) continue;
+          const i = zi * g.nx + xi;
+          if (g.cells[i]) return i;
         }
       }
     }
-    pts.push(endV.clone());
-    return pts;
+    return -1;
   }
+
+  // triangles A* removed (heightfield A* used instead)
+
+  // triangle funnel removed; simple smoothing used on grid paths
 }
 
-// Helpers
-function pointInTriangle2D(p, a, b, c) {
-  // Project to XZ plane (Three uses Y-up)
-  const px = p.x, pz = p.z;
-  const ax = a.x, az = a.z;
-  const bx = b.x, bz = b.z;
-  const cx = c.x, cz = c.z;
-  const v0x = cx - ax, v0z = cz - az;
-  const v1x = bx - ax, v1z = bz - az;
-  const v2x = px - ax, v2z = pz - az;
-  const dot00 = v0x * v0x + v0z * v0z;
-  const dot01 = v0x * v1x + v0z * v1z;
-  const dot02 = v0x * v2x + v0z * v2z;
-  const dot11 = v1x * v1x + v1z * v1z;
-  const dot12 = v1x * v2x + v1z * v2z;
-  const invDenom = 1 / (dot00 * dot11 - dot01 * dot01 + 1e-12);
-  const u = (dot11 * dot02 - dot01 * dot12) * invDenom;
-  const v = (dot00 * dot12 - dot01 * dot02) * invDenom;
-  return u >= -1e-6 && v >= -1e-6 && (u + v) <= 1 + 1e-6;
-}
-
-function triarea2(a, b, c) {
-  // 2D signed area on XZ plane
-  const abx = b.x - a.x, abz = b.z - a.z;
-  const acx = c.x - a.x, acz = c.z - a.z;
-  return acx * abz - abx * acz;
-}
+// Helpers (triangle math removed for heightfield approach)
 
 class MinQueue {
   constructor() { this._arr = []; }
