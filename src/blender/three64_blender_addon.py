@@ -884,14 +884,24 @@ class THREE64_OT_mark_navigable(bpy.types.Operator):
 			obj = context.object
 			# Use scene-configured key if available; default to 'navigable'
 			prop_key = getattr(context.scene, "three64_nav_prop_key", "navigable")
-			cur = bool(obj.get(prop_key, False))
-			obj[prop_key] = not cur
-			try:
-				ui = obj.id_properties_ui(prop_key)
-				ui.update(description="Marks this object as walkable for Three64 navmesh baking (toggle)")
-			except Exception:
-				pass
-			self.report({"INFO"}, f"Set {prop_key}={obj.get(prop_key)} on '{obj.name}'")
+			cur_on = bool(obj.get(prop_key, False))
+			if cur_on:
+				# Toggling off: remove the property entirely if it exists
+				try:
+					if prop_key in obj:
+						del obj[prop_key]
+				except Exception:
+					pass
+				self.report({"INFO"}, f"Removed {prop_key} from '{obj.name}'")
+			else:
+				# Toggling on: set to True and add tooltip metadata
+				obj[prop_key] = True
+				try:
+					ui = obj.id_properties_ui(prop_key)
+					ui.update(description="Marks this object as walkable for Three64 navmesh baking (toggle)")
+				except Exception:
+					pass
+				self.report({"INFO"}, f"Set {prop_key}=True on '{obj.name}'")
 			return {"FINISHED"}
 		except Exception:
 			self.report({"ERROR"}, "Failed to set navigable property")
@@ -912,14 +922,24 @@ class THREE64_OT_mark_double_sided(bpy.types.Operator):
 		try:
 			obj = context.object
 			prop_key = "doubleSided"
-			cur = bool(obj.get(prop_key, False))
-			obj[prop_key] = not cur
-			try:
-				ui = obj.id_properties_ui(prop_key)
-				ui.update(description="Marks this object to render with double-sided materials in Three64 runtime (toggle)")
-			except Exception:
-				pass
-			self.report({"INFO"}, f"Set {prop_key}={obj.get(prop_key)} on '{obj.name}'")
+			cur_on = bool(obj.get(prop_key, False))
+			if cur_on:
+				# Toggling off: remove the property entirely if it exists
+				try:
+					if prop_key in obj:
+						del obj[prop_key]
+				except Exception:
+					pass
+				self.report({"INFO"}, f"Removed {prop_key} from '{obj.name}'")
+			else:
+				# Toggling on: set to True and add tooltip metadata
+				obj[prop_key] = True
+				try:
+					ui = obj.id_properties_ui(prop_key)
+					ui.update(description="Marks this object to render with double-sided materials in Three64 runtime (toggle)")
+				except Exception:
+					pass
+				self.report({"INFO"}, f"Set {prop_key}=True on '{obj.name}'")
 			return {"FINISHED"}
 		except Exception:
 			self.report({"ERROR"}, "Failed to set doubleSided property")
