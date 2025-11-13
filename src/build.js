@@ -278,6 +278,8 @@ const config = {
     },
   },
   module: {
+    // Avoid parsing/minifying Emscripten asm.js bundle to prevent "Invalid asm.js" errors
+    noParse: /ammo\.js$/,
     rules: [
       {
         test: /\.(glb|gltf)$/i,

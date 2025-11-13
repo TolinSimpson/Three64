@@ -92,7 +92,9 @@ export class EventSystem {
     window.addEventListener('keydown', (e) => this.keys.add(e.code));
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     // Pointer look (pointer lock)
-    this.dom.addEventListener('click', () => this.dom.requestPointerLock?.());
+    this.dom.addEventListener('click', () => {
+      try { this.dom.requestPointerLock?.(); } catch (_e) { /* ignore SecurityError */ }
+    });
     document.addEventListener('pointerlockchange', () => {
       // no-op; controller components can check pointer lock via document.pointerLockElement === dom
     });

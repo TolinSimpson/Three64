@@ -957,6 +957,10 @@ class THREE64_OT_mark_collider(bpy.types.Operator):
 		description="Collider shape to mark in userData",
 		items=(
 			("convex", "Convex", "Convex hull collider"),
+			("box", "Box", "Axis-aligned box from bounds"),
+			("sphere", "Sphere", "Sphere from bounds"),
+			("capsule", "Capsule", "Capsule from bounds (Y-up)"),
+			("mesh", "Mesh (Triangle)", "Triangle mesh collider (uses mesh triangles)"),
 		),
 		default="convex",
 	)

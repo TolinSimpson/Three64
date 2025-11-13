@@ -17,7 +17,7 @@ import {
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { fitsInTMEM, config } from "./engine.js";
 import { BudgetTracker } from "./debug.js";
-import { ArchetypeRegistry } from "./component.js";
+import { ArchetypeRegistry, ComponentRegistry } from "./component.js";
 import { loadJSON } from "./io.js";
 import { Scene } from "./scene.js";
 
@@ -215,7 +215,18 @@ export class GLTFAssetLoader {
 export class SceneLoader {
   constructor(game) {
     this.game = new Scene(game);
+    try { this.game.Initialize?.(); } catch {}
     this.loader = new GLTFAssetLoader(this.game?.budget);
+    this._missingCtorWarned = new Set();
+    this._playerDetectedLogged = false;
+  }
+ 
+  async _resolveComponentCtor(name) {
+    try {
+      const ctor = ComponentRegistry.get(name);
+      if (ctor) return ctor;
+    } catch {}
+    return undefined;
   }
 
   async loadFromDefinition(definition, baseUrl) {
@@ -272,11 +283,23 @@ export class SceneLoader {
           await this._instantiateProperties({ mapping: sceneMapping, baseUrl });
         }
         if (entry.physics && this.game.physics) {
-          if (entry.physics.collider === "convex") {
+          const kind = String(entry.physics.collider || "convex").toLowerCase();
+          if (kind === "convex") {
             this.game.physics.addConvexColliderForObject(root, {
               mergeChildren: entry.physics.mergeChildren !== false,
               visible: entry.physics.visible === true,
             });
+          } else if (kind === "mesh") {
+            this.game.physics.addMeshColliderForObject(root, {
+              mergeChildren: entry.physics.mergeChildren !== false,
+              visible: entry.physics.visible === true,
+            });
+          } else if (kind === "box") {
+            this.game.physics.addBoxColliderForObject(root, { visible: entry.physics.visible === true });
+          } else if (kind === "sphere") {
+            this.game.physics.addSphereColliderForObject(root, { visible: entry.physics.visible === true });
+          } else if (kind === "capsule") {
+            this.game.physics.addCapsuleColliderForObject(root, { visible: entry.physics.visible === true });
           }
         }
         added.push(root);
@@ -375,11 +398,23 @@ export class SceneLoader {
           await this._instantiateProperties({ mapping: sceneMapping, baseUrl });
         }
         if (entry.physics && this.game.physics) {
-          if (entry.physics.collider === "convex") {
+          const kind = String(entry.physics.collider || "convex").toLowerCase();
+          if (kind === "convex") {
             this.game.physics.addConvexColliderForObject(root, {
               mergeChildren: entry.physics.mergeChildren !== false,
               visible: entry.physics.visible === true,
             });
+          } else if (kind === "mesh") {
+            this.game.physics.addMeshColliderForObject(root, {
+              mergeChildren: entry.physics.mergeChildren !== false,
+              visible: entry.physics.visible === true,
+            });
+          } else if (kind === "box") {
+            this.game.physics.addBoxColliderForObject(root, { visible: entry.physics.visible === true });
+          } else if (kind === "sphere") {
+            this.game.physics.addSphereColliderForObject(root, { visible: entry.physics.visible === true });
+          } else if (kind === "capsule") {
+            this.game.physics.addCapsuleColliderForObject(root, { visible: entry.physics.visible === true });
           }
         }
         added.push(root);
@@ -556,15 +591,30 @@ export class SceneLoader {
       const comps = this._extractComponentsFromUserData(ud);
       for (const c of comps) {
         try {
+          try {
+            const t = (c?.type || "").toString().toLowerCase();
+            if (t === "player" && !this._playerDetectedLogged) {
+              this._playerDetectedLogged = true;
+              console.warn("[SceneLoader] Player component detected via userData", { objectName: o?.name || "(unnamed)" });
+            }
+          } catch {}
           const ctor = (c.type && (await this._resolveComponentCtor(c.type))) || null;
-          if (!ctor) continue;
-          const instance = new ctor({ game: this.game, object: o, options: c.params, propName: c.type });
-          if (instance && typeof instance.Initialize === "function") {
-            await Promise.resolve(instance.Initialize());
+          if (!ctor) {
+            const t = (c?.type || "").toString();
+            if (!this._missingCtorWarned.has(t)) {
+              this._missingCtorWarned.add(t);
+              try { console.warn("[SceneLoader] Component ctor not found", { type: t }); } catch {}
+            }
+            continue;
           }
+          const instance = new ctor({ game: this.game, object: o, options: c.params, propName: c.type });
           if (instance) {
+            try { o.__components = o.__components || []; o.__components.push(instance); } catch {}
             this.game.componentInstances.push(instance);
             created.push(instance);
+          }
+          if (instance && typeof instance.Initialize === "function") {
+            await Promise.resolve(instance.Initialize());
           }
         } catch {}
       }
@@ -620,6 +670,16 @@ export class SceneLoader {
     const out = [];
     if (!ud || typeof ud !== "object") return out;
     const add = (type, params) => { if (type) out.push({ type: String(type), params: params ?? undefined }); };
+    const getCI = (obj, key) => {
+      // case-insensitive lookup for a direct key
+      if (!obj || typeof obj !== "object") return undefined;
+      if (Object.prototype.hasOwnProperty.call(obj, key)) return obj[key];
+      const lower = String(key).toLowerCase();
+      for (const k of Object.keys(obj)) {
+        if (String(k).toLowerCase() === lower) return obj[k];
+      }
+      return undefined;
+    };
 
     // Numbered components: component2, component_2, script2, script_2
     const numbered = {};
@@ -655,9 +715,9 @@ export class SceneLoader {
     }
 
     // First (un-numbered) component: support plain keys as params if not provided via options/params/props
-    const firstType = ud.component || ud.script;
+    const firstType = getCI(ud, "component") || getCI(ud, "script");
     if (firstType) {
-      let firstParams = ud.options ?? ud.params ?? ud.props;
+      let firstParams = getCI(ud, "options") ?? getCI(ud, "params") ?? getCI(ud, "props");
       if (!firstParams || typeof firstParams !== "object") {
         const reservedExact = new Set(["component", "script", "components"]);
         const reservedPrefix = ["comp.", "c_"];
@@ -796,6 +856,14 @@ export class SceneLoader {
             const DefaultExport = mod?.default;
             const CreateFn = mod?.create;
             const ComponentCtor = mod?.Component;
+            try {
+              const isPlayerLike =
+                (typeof DefaultExport === "function" && (DefaultExport.name || "").toLowerCase() === "player") ||
+                (typeof ComponentCtor === "function" && (ComponentCtor.name || "").toLowerCase() === "player");
+              if (isPlayerLike) {
+                console.info("[SceneLoader] Player component detected via properties mapping", { idName, objectName: obj?.name || "(unnamed)" });
+              }
+            } catch {}
             if (typeof DefaultExport === "function") {
               // Try as a class first, then as factory
               try {
@@ -809,6 +877,14 @@ export class SceneLoader {
               instance = CreateFn(this.game, obj, options, idName);
             }
             // Optional lifecycle hooks: prefer Initialize, then init
+            if (instance) {
+              instance.__idName = idName;
+              instance.__object = obj;
+              instance.__scriptUrl = scriptUrl;
+              try { obj.__components = obj.__components || []; obj.__components.push(instance); } catch {}
+              this.game.componentInstances.push(instance);
+              created.push(instance);
+            }
             if (instance && typeof instance.Initialize === "function") {
               await Promise.resolve(instance.Initialize(this.game, obj, options));
             } else if (typeof mod?.Initialize === "function") {
@@ -817,13 +893,6 @@ export class SceneLoader {
               await Promise.resolve(instance.init(this.game, obj, options));
             } else if (typeof mod?.init === "function") {
               await Promise.resolve(mod.init(this.game, obj, options));
-            }
-            if (instance) {
-              instance.__idName = idName;
-              instance.__object = obj;
-              instance.__scriptUrl = scriptUrl;
-              this.game.componentInstances.push(instance);
-              created.push(instance);
             }
           } catch (e) {
             console.warn("Failed to instantiate property for ID:", idName, scriptUrl, e);
@@ -992,7 +1061,18 @@ export class SceneLoader {
 
       if (!colliderEnabled) return;
 
-      const typeStr = typeof colliderType === "string" ? String(colliderType).toLowerCase() : "convex";
+      // Normalize collider type; support convex, mesh, box, sphere, capsule for static colliders
+      let typeStr = typeof colliderType === "string" ? String(colliderType).toLowerCase() : "convex";
+      const typeAlias = {
+        convex: "convex",
+        collider: "convex",
+        collision: "convex",
+        mesh: "mesh",
+        box: "box",
+        sphere: "sphere",
+        capsule: "capsule",
+      };
+      const normalized = typeAlias[typeStr] || "convex";
       const visible =
         truthy(get(ud, ["colliderVisible", "collisionVisible"])) ||
         truthy(ud?.physics?.visible) ||
@@ -1001,16 +1081,36 @@ export class SceneLoader {
       const mergeChildren =
         get(ud, ["mergeChildren"]) ?? ud?.physics?.mergeChildren ?? ud["physics.mergeChildren"];
 
-      // Currently we support convex colliders; other types fall back to convex
-      if (typeStr !== "convex") {
-        // Future: support box/sphere/capsule via Ammo native shapes.
-        try { console.warn(`Collider type '${typeStr}' not yet supported; using convex for`, o.name); } catch {}
+      // Warn only for unknown/unsupported types; known aliases silently map
+      if (!(typeStr in typeAlias)) {
+        if (!(typeStr in typeAlias)) {
+          try { console.warn(`Collider type '${typeStr}' not recognized; using convex for`, o.name); } catch {}
+        }
       }
 
-      physics.addConvexColliderForObject(o, {
-        mergeChildren: mergeChildren !== false && !nameSaysCollider ? true : false,
-        visible,
-      });
+      if (normalized === "mesh") {
+        physics.addMeshColliderForObject(o, {
+          mergeChildren: mergeChildren !== false && !nameSaysCollider ? true : false,
+          visible,
+        });
+      } else if (normalized === "box") {
+        physics.addBoxColliderForObject(o, {
+          visible,
+        });
+      } else if (normalized === "sphere") {
+        physics.addSphereColliderForObject(o, {
+          visible,
+        });
+      } else if (normalized === "capsule") {
+        physics.addCapsuleColliderForObject(o, {
+          visible,
+        });
+      } else {
+        physics.addConvexColliderForObject(o, {
+          mergeChildren: mergeChildren !== false && !nameSaysCollider ? true : false,
+          visible,
+        });
+      }
 
       // Optionally hide explicit collider helper meshes by name
       if (nameSaysCollider && o.visible) {

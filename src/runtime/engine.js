@@ -7,7 +7,6 @@ import { Object3D } from "three";
 import { loadJSON } from "./io.js";
 import LoadingScreen from "./loadingScreen.js";
 import { EventSystem } from "./eventSystem.js";
-import { Player } from "./player.js";
 import { UISystem } from "./uiSystem.js";
 import { Statistic } from "./statistic.js";
 import { StatisticBar } from "./statisticBar.js";
@@ -15,6 +14,11 @@ import { ArchetypeRegistry } from "./component.js";
 import "./navmesh.js";
 import "./raycaster.js";
 import "./volume.js";
+import "./player.js"; // ensure Player component registers itself via ComponentRegistry
+import "./agent.js";
+import "./healthbar.js";
+import "./statistic.js";
+import "./statisticBar.js";
 export const config = {
   expansionPak: true,
   targetFPS: 30,
@@ -205,12 +209,7 @@ export async function createApp() {
   // Pooling
   app.pool = new PoolManager(app);
 
-  // Create player component bound to the camera rig
-  if (config.createDefaultPlayer) {
-    const player = new Player({ game: app, object: playerRig, options: {}, propName: "Player" });
-    try { player.Initialize?.(); } catch (e) { console.error("Player.Initialize failed:", e); }
-    app.componentInstances.push(player);
-  }
+  // No default Player; rely on GLTF-authored Player component
   // Initialize generic Statistic + StatisticBar
   try {
     const stat = new Statistic({ game: app, object: null, options: { name: 'health', min: 0, max: 100, current: 100, regenPerSec: 0 }, propName: "Statistic" });

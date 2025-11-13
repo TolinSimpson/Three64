@@ -1,5 +1,5 @@
 'use strict';
-import { Group, Raycaster, Vector3, MeshBasicMaterial, Mesh } from "three";
+import { Group, Raycaster, Vector3, MeshBasicMaterial, Mesh, BufferGeometry, Float32BufferAttribute } from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import AmmoFactory from "ammo.js";
 
@@ -62,6 +62,189 @@ export class PhysicsWorld {
     }
   }
 
+  // Build a static mesh collider that follows the original triangle mesh (world baked).
+  addMeshColliderForObject(object3D, { mergeChildren = true, visible = false, material = null } = {}) {
+    const triPositions = []; // flat array [x,y,z,...]
+    object3D.updateWorldMatrix(true, true);
+    const emitMeshTriangles = (o, outArr) => {
+      if (!o.isMesh || !o.geometry) return;
+      const geom = o.geometry;
+      const pos = geom.getAttribute("position");
+      if (!pos) return;
+      const index = geom.getIndex();
+      const m = o.matrixWorld;
+      const v = new Vector3();
+      const addVertex = (i) => {
+        v.fromBufferAttribute(pos, i).applyMatrix4(m);
+        outArr.push(v.x, v.y, v.z);
+      };
+      if (index) {
+        for (let i = 0; i < index.count; i += 3) {
+          addVertex(index.getX(i));
+          addVertex(index.getX(i + 1));
+          addVertex(index.getX(i + 2));
+        }
+      } else {
+        for (let i = 0; i < pos.count; i += 3) {
+          addVertex(i + 0);
+          addVertex(i + 1);
+          addVertex(i + 2);
+        }
+      }
+    };
+    if (mergeChildren) {
+      object3D.traverse((o) => emitMeshTriangles(o, triPositions));
+      this._addMeshFromPositions(triPositions, { visible, material });
+    } else {
+      // Per-mesh triangle colliders (do not merge children)
+      object3D.traverse((o) => {
+        if (!o.isMesh) return;
+        const arr = [];
+        emitMeshTriangles(o, arr);
+        if (arr.length >= 9) this._addMeshFromPositions(arr, { visible, material });
+      });
+    }
+  }
+
+  // Build a static axis-aligned box collider from world bounds
+  addBoxColliderForObject(object3D, { visible = false, material = null } = {}) {
+    const { min, max } = this._boundsForObject(object3D);
+    if (!isFinite(min.x) || !isFinite(max.x)) return;
+    // Compute center and half extents
+    const hx = Math.max(1e-4, (max.x - min.x) / 2);
+    const hy = Math.max(1e-4, (max.y - min.y) / 2);
+    const hz = Math.max(1e-4, (max.z - min.z) / 2);
+    const cx = (min.x + max.x) / 2;
+    const cy = (min.y + max.y) / 2;
+    const cz = (min.z + max.z) / 2;
+    // Build world-space triangles for debug/raycast fallback
+    const P = [
+      [cx - hx, cy - hy, cz - hz],
+      [cx + hx, cy - hy, cz - hz],
+      [cx + hx, cy + hy, cz - hz],
+      [cx - hx, cy + hy, cz - hz],
+      [cx - hx, cy - hy, cz + hz],
+      [cx + hx, cy - hy, cz + hz],
+      [cx + hx, cy + hy, cz + hz],
+      [cx - hx, cy + hy, cz + hz],
+    ];
+    const faces = [
+      [0, 1, 2], [0, 2, 3], // -Z
+      [4, 6, 5], [4, 7, 6], // +Z
+      [0, 4, 5], [0, 5, 1], // -Y
+      [3, 2, 6], [3, 6, 7], // +Y
+      [0, 3, 7], [0, 7, 4], // -X
+      [1, 5, 6], [1, 6, 2], // +X
+    ];
+    const flat = [];
+    for (let i = 0; i < faces.length; i++) {
+      const f = faces[i];
+      for (let j = 0; j < 3; j++) {
+        const v = P[f[j]];
+        flat.push(v[0], v[1], v[2]);
+      }
+    }
+    this._addDebugMeshFromPositions(flat, { visible, material });
+    if (this.ammoReady && this.Ammo && this.dynamicsWorld) {
+      this._createAmmoStaticBox({ hx, hy, hz, center: { x: cx, y: cy, z: cz } });
+    }
+  }
+
+  // Build a static sphere collider from world bounds (max of half-axes)
+  addSphereColliderForObject(object3D, { visible = false, material = null } = {}) {
+    const { min, max } = this._boundsForObject(object3D);
+    if (!isFinite(min.x) || !isFinite(max.x)) return;
+    const cx = (min.x + max.x) / 2;
+    const cy = (min.y + max.y) / 2;
+    const cz = (min.z + max.z) / 2;
+    const rx = Math.max(1e-4, (max.x - min.x) / 2);
+    const ry = Math.max(1e-4, (max.y - min.y) / 2);
+    const rz = Math.max(1e-4, (max.z - min.z) / 2);
+    const r = Math.max(rx, ry, rz);
+    // Debug mesh: low-poly octahedron
+    const verts = [
+      [cx, cy + r, cz], // top
+      [cx + r, cy, cz],
+      [cx, cy, cz + r],
+      [cx - r, cy, cz],
+      [cx, cy, cz - r],
+      [cx, cy - r, cz], // bottom
+    ];
+    const faces = [
+      [0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1],
+      [5, 2, 1], [5, 3, 2], [5, 4, 3], [5, 1, 4],
+    ];
+    const flat = [];
+    for (let i = 0; i < faces.length; i++) {
+      const f = faces[i];
+      for (let j = 0; j < 3; j++) {
+        const v = verts[f[j]];
+        flat.push(v[0], v[1], v[2]);
+      }
+    }
+    this._addDebugMeshFromPositions(flat, { visible, material });
+    if (this.ammoReady && this.Ammo && this.dynamicsWorld) {
+      this._createAmmoStaticSphere({ r, center: { x: cx, y: cy, z: cz } });
+    }
+  }
+
+  // Build a static capsule collider from world bounds (Y-up). Height is cylinder part.
+  addCapsuleColliderForObject(object3D, { visible = false, material = null } = {}) {
+    const { min, max } = this._boundsForObject(object3D);
+    if (!isFinite(min.x) || !isFinite(max.x)) return;
+    const cx = (min.x + max.x) / 2;
+    const cy = (min.y + max.y) / 2;
+    const cz = (min.z + max.z) / 2;
+    const sx = (max.x - min.x);
+    const sy = (max.y - min.y);
+    const sz = (max.z - min.z);
+    const r = Math.max(1e-4, Math.min(sx, sz) * 0.5);
+    const h = Math.max(1e-4, sy - 2 * r);
+    const yTop = cy + h * 0.5;
+    const yBot = cy - h * 0.5;
+    // Coarse debug mesh: two caps + 4-sided cylinder
+    const pTop = [cx, yTop + r, cz];
+    const pBot = [cx, yBot - r, cz];
+    const ringTop = [
+      [cx + r, yTop, cz],
+      [cx, yTop, cz + r],
+      [cx - r, yTop, cz],
+      [cx, yTop, cz - r],
+    ];
+    const ringBot = [
+      [cx + r, yBot, cz],
+      [cx, yBot, cz + r],
+      [cx - r, yBot, cz],
+      [cx, yBot, cz - r],
+    ];
+    const tri = [];
+    // top cap
+    for (let i = 0; i < 4; i++) {
+      const a = ringTop[i];
+      const b = ringTop[(i + 1) % 4];
+      tri.push(...pTop, ...a, ...b);
+    }
+    // cylinder sides
+    for (let i = 0; i < 4; i++) {
+      const aTop = ringTop[i];
+      const bTop = ringTop[(i + 1) % 4];
+      const aBot = ringBot[i];
+      const bBot = ringBot[(i + 1) % 4];
+      tri.push(...aTop, ...aBot, ...bBot);
+      tri.push(...aTop, ...bBot, ...bTop);
+    }
+    // bottom cap
+    for (let i = 0; i < 4; i++) {
+      const a = ringBot[i];
+      const b = ringBot[(i + 1) % 4];
+      tri.push(...pBot, ...b, ...a);
+    }
+    this._addDebugMeshFromPositions(tri, { visible, material });
+    if (this.ammoReady && this.Ammo && this.dynamicsWorld) {
+      this._createAmmoStaticCapsule({ r, h, center: { x: cx, y: cy, z: cz } });
+    }
+  }
+
   _addConvexFromPoints(points, { visible, material }) {
     if (!points || points.length < 4) return; // Need at least a tetrahedron
     const geom = new ConvexGeometry(points);
@@ -76,6 +259,39 @@ export class PhysicsWorld {
     if (this.ammoReady && this.Ammo && this.dynamicsWorld) {
       this._createAmmoStaticConvex(points);
     }
+  }
+
+  _addMeshFromPositions(flatPositions, { visible, material }) {
+    if (!Array.isArray(flatPositions) || flatPositions.length < 9) return;
+    // Build BufferGeometry from provided world-space triangle positions
+    const geom = new BufferGeometry();
+    const posAttr = new Float32BufferAttribute(flatPositions, 3);
+    geom.setAttribute("position", posAttr);
+    geom.computeVertexNormals();
+    const mat = material || new MeshBasicMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.15 });
+    const mesh = new Mesh(geom, mat);
+    mesh.matrixAutoUpdate = false;
+    mesh.visible = this.debug || visible === true;
+    this.colliderGroup.add(mesh);
+    this.colliders.push(mesh);
+    // Build Ammo static triangle mesh when available
+    if (this.ammoReady && this.Ammo && this.dynamicsWorld) {
+      this._createAmmoStaticTriangleMesh(flatPositions);
+    }
+  }
+
+  _addDebugMeshFromPositions(flatPositions, { visible, material }) {
+    if (!Array.isArray(flatPositions) || flatPositions.length < 9) return;
+    const geom = new BufferGeometry();
+    const posAttr = new Float32BufferAttribute(flatPositions, 3);
+    geom.setAttribute("position", posAttr);
+    geom.computeVertexNormals();
+    const mat = material || new MeshBasicMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.15 });
+    const mesh = new Mesh(geom, mat);
+    mesh.matrixAutoUpdate = false;
+    mesh.visible = this.debug || visible === true;
+    this.colliderGroup.add(mesh);
+    this.colliders.push(mesh);
   }
 
   // Simple raycast against colliders and optional ground plane at y=0.
@@ -326,6 +542,87 @@ export class PhysicsWorld {
     const body = new Ammo.btRigidBody(rbInfo);
     this.dynamicsWorld.addRigidBody(body);
     this._rigidBodies.push(body);
+  }
+
+  _createAmmoStaticBox({ hx, hy, hz, center }) {
+    const Ammo = this.Ammo;
+    if (!Ammo || !this.dynamicsWorld) return;
+    try {
+      const shape = new Ammo.btBoxShape(new Ammo.btVector3(hx, hy, hz));
+      const transform = new Ammo.btTransform();
+      transform.setIdentity();
+      transform.setOrigin(new Ammo.btVector3(center.x, center.y, center.z));
+      const motionState = new Ammo.btDefaultMotionState(transform);
+      const mass = 0;
+      const localInertia = new Ammo.btVector3(0, 0, 0);
+      const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
+      const body = new Ammo.btRigidBody(rbInfo);
+      this.dynamicsWorld.addRigidBody(body);
+      this._rigidBodies.push(body);
+    } catch {}
+  }
+
+  _createAmmoStaticSphere({ r, center }) {
+    const Ammo = this.Ammo;
+    if (!Ammo || !this.dynamicsWorld) return;
+    try {
+      const shape = new Ammo.btSphereShape(Math.max(1e-4, r));
+      const transform = new Ammo.btTransform();
+      transform.setIdentity();
+      transform.setOrigin(new Ammo.btVector3(center.x, center.y, center.z));
+      const motionState = new Ammo.btDefaultMotionState(transform);
+      const mass = 0;
+      const localInertia = new Ammo.btVector3(0, 0, 0);
+      const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
+      const body = new Ammo.btRigidBody(rbInfo);
+      this.dynamicsWorld.addRigidBody(body);
+      this._rigidBodies.push(body);
+    } catch {}
+  }
+
+  _createAmmoStaticCapsule({ r, h, center }) {
+    const Ammo = this.Ammo;
+    if (!Ammo || !this.dynamicsWorld) return;
+    try {
+      const shape = new Ammo.btCapsuleShape(Math.max(1e-4, r), Math.max(0, h));
+      const transform = new Ammo.btTransform();
+      transform.setIdentity();
+      transform.setOrigin(new Ammo.btVector3(center.x, center.y, center.z));
+      const motionState = new Ammo.btDefaultMotionState(transform);
+      const mass = 0;
+      const localInertia = new Ammo.btVector3(0, 0, 0);
+      const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
+      const body = new Ammo.btRigidBody(rbInfo);
+      this.dynamicsWorld.addRigidBody(body);
+      this._rigidBodies.push(body);
+    } catch {}
+  }
+
+  _createAmmoStaticTriangleMesh(flatPositions) {
+    const Ammo = this.Ammo;
+    if (!Ammo || !this.dynamicsWorld) return;
+    try {
+      const triMesh = new Ammo.btTriangleMesh(true, true);
+      for (let i = 0; i < flatPositions.length - 8; i += 9) {
+        const v0 = new Ammo.btVector3(flatPositions[i + 0], flatPositions[i + 1], flatPositions[i + 2]);
+        const v1 = new Ammo.btVector3(flatPositions[i + 3], flatPositions[i + 4], flatPositions[i + 5]);
+        const v2 = new Ammo.btVector3(flatPositions[i + 6], flatPositions[i + 7], flatPositions[i + 8]);
+        triMesh.addTriangle(v0, v1, v2, true);
+      }
+      const useQuantizedAabbCompression = true;
+      const buildBvh = true;
+      const shape = new Ammo.btBvhTriangleMeshShape(triMesh, useQuantizedAabbCompression, buildBvh);
+      const transform = new Ammo.btTransform();
+      transform.setIdentity();
+      transform.setOrigin(new Ammo.btVector3(0, 0, 0));
+      const motionState = new Ammo.btDefaultMotionState(transform);
+      const mass = 0;
+      const localInertia = new Ammo.btVector3(0, 0, 0);
+      const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
+      const body = new Ammo.btRigidBody(rbInfo);
+      this.dynamicsWorld.addRigidBody(body);
+      this._rigidBodies.push(body);
+    } catch {}
   }
 
   // --------------------------

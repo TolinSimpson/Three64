@@ -49,6 +49,10 @@ export class Player extends Component {
     const app = this.game;
     this.camera = app?.rendererCore?.camera || null;
     this.rig = this.camera?.parent || this.object || null;
+    try {
+      const objName = this.object?.name || "(no-object)";
+      console.info("[Player] Initialize start", { objName, hasObject: !!this.object });
+    } catch {}
     const start = new Vector3();
     let yawFromObj = null;
     let pitchFromObj = null;
@@ -74,6 +78,13 @@ export class Player extends Component {
       this.camera.getWorldPosition(start);
       start.y = Math.max(0, start.y - 1.6);
     }
+    try {
+      console.info("[Player] Spawn pose computed", {
+        start: { x: start.x, y: start.y, z: start.z },
+        yawFromObj,
+        pitchFromObj
+      });
+    } catch {}
 
     this.controller = new CharacterController({ position: start, lookSensitivity: this.lookSensitivity });
     if (yawFromObj !== null && pitchFromObj !== null) {
@@ -87,6 +98,12 @@ export class Player extends Component {
 
     // Make GLTF-authored Player authoritative over engine-default one
     const isGLTFAuthored = !!(this.object && this.object !== (this.camera?.parent || null));
+    try {
+      const totalPlayers = Array.isArray(this.game?.componentInstances)
+        ? this.game.componentInstances.filter(ci => (ci?.constructor === Player) || ((ci?.__typeName || "").toString().toLowerCase() === "player")).length
+        : 0;
+      console.info("[Player] Authorship/instances", { isGLTFAuthored, totalPlayers });
+    } catch {}
     if (this.game && Array.isArray(this.game.componentInstances)) {
       for (const c of this.game.componentInstances) {
         if (!c || c === this) continue;
@@ -102,6 +119,12 @@ export class Player extends Component {
       }
     }
     if (app) app.player = this;
+
+    // Immediately sync rig/camera to the initialized controller pose so spawn is visible right away
+    try {
+      this.controller?.lateApplyToRig?.(this.rig, this.camera);
+    } catch {}
+    try { console.info("[Player] Initialize complete", { disabled: this._disabled === true }); } catch {}
   }
 
   Input(dt, app) {
