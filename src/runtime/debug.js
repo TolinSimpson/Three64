@@ -1,10 +1,17 @@
 'use strict';
 import { config } from "./engine.js";
+import { ComponentRegistry } from "./component.js";
 
 export const Debug = {
   config: null,
   enabled: false,
   overlayEl: null,
+  selection: {
+    object: null,
+    path: null,
+    source: null, // 'find' | 'path' | 'name' | 'prop' | 'uuid'
+  },
+  lastFind: [],
   cli: {
     inputEl: null,
     logEl: null,
@@ -24,6 +31,7 @@ export const Debug = {
     ramEl: null,
     voicesEl: null,
     particlesEl: null,
+    fpsBadgeEl: null,
     frames: 0,
     accumMs: 0,
     frameStart: 0,
@@ -37,6 +45,7 @@ export const Debug = {
         if (this.accumMs >= 1000) {
           const fps = Math.round((this.frames * 1000) / this.accumMs);
           this.fpsEl.textContent = `FPS: ${fps}`;
+          if (this.fpsBadgeEl) this.fpsBadgeEl.textContent = `${fps} fps`;
           this.frames = 0;
           this.accumMs = 0;
         }
@@ -107,6 +116,7 @@ function wireElements() {
   Debug.profiler.ramEl = document.getElementById('hud-ram');
   Debug.profiler.voicesEl = document.getElementById('hud-voices');
   Debug.profiler.particlesEl = document.getElementById('hud-particles');
+  Debug.profiler.fpsBadgeEl = document.getElementById('hud-fps-badge');
   Debug.cli.inputEl = document.getElementById('debug-cli-input');
   Debug.cli.logEl = document.getElementById('debug-cli-log');
   const navBtn = document.getElementById('toggle-navmesh-btn');
@@ -357,7 +367,11 @@ function handleCommand(line) {
   const [cmd, ...rest] = line.split(/\s+/);
   switch ((cmd || '').toLowerCase()) {
     case 'help':
-      log('commands: help, wire on|off, hud on|off, budget on|off, colliders on|off, clear');
+      log('commands: help, clear, wire on|off, hud on|off, budget on|off, colliders on|off');
+      log('scene: find <name>, select|sel <idx|name|path|prop:ID|uuid:...>, where, tree [depth], ls');
+      log('gltf: gltf (list roots), info (selected), comps [filter]');
+      log('components: addcomp <Type> [json], rmcomp <Type>, setcomp <Type> <path> <value>');
+      log('invoke: call <Type> <method> [jsonArgs]');
       break;
     case 'clear':
       if (Debug.cli.logEl) Debug.cli.logEl.innerHTML = '';
@@ -373,6 +387,46 @@ function handleCommand(line) {
       break;
     case 'colliders':
       setToggle('collidersLime', parseOnOff(rest[0]));
+      break;
+    // ---- Scene + GLTF inspection ----
+    case 'find':
+      cmdFind(rest.join(' '));
+      break;
+    case 'select':
+    case 'sel':
+      cmdSelect(rest.join(' '));
+      break;
+    case 'where':
+      cmdWhere();
+      break;
+    case 'tree':
+      cmdTree(rest[0]);
+      break;
+    case 'ls':
+      cmdListChildren();
+      break;
+    case 'gltf':
+      cmdListGLTFs();
+      break;
+    case 'info':
+      cmdInfo();
+      break;
+    case 'comps':
+    case 'components':
+      cmdListComponents(rest.join(' '));
+      break;
+    // ---- Component modifications ----
+    case 'addcomp':
+      cmdAddComponent(rest);
+      break;
+    case 'rmcomp':
+      cmdRemoveComponent(rest);
+      break;
+    case 'setcomp':
+      cmdSetComponent(rest);
+      break;
+    case 'call':
+      cmdCallComponent(rest);
       break;
     default:
       log(`unknown: ${cmd}`);
@@ -412,6 +466,364 @@ function formatBytes(b) {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+// -----------------------------
+// CLI helpers for GLTF nodes and components
+// -----------------------------
+function getGame() { return window.__game; }
+function getRoot() { return getGame()?.rendererCore?.scene || null; }
+
+function printLines(lines) {
+  if (!Array.isArray(lines)) { log(lines); return; }
+  for (let i = 0; i < lines.length; i++) log(lines[i]);
+}
+
+function humanPathFor(obj) {
+  if (!obj) return '(none)';
+  const segs = [];
+  let cur = obj;
+  while (cur) {
+    segs.push(cur.name || cur.type || '(unnamed)');
+    cur = cur.parent;
+    if (cur && cur.isScene) break;
+  }
+  return '/' + segs.reverse().join('/');
+}
+
+function traverse(root, fn) {
+  if (!root) return;
+  const stack = [root];
+  while (stack.length) {
+    const o = stack.pop();
+    if (!o) continue;
+    try { fn(o); } catch {}
+    if (o.children && o.children.length) {
+      for (let i = o.children.length - 1; i >= 0; i--) stack.push(o.children[i]);
+    }
+  }
+}
+
+function findByNameSubstring(nameSubstr) {
+  const root = getRoot();
+  const needle = String(nameSubstr || '').toLowerCase();
+  const out = [];
+  if (!root || !needle) return out;
+  traverse(root, (o) => {
+    const n = String(o.name || '').toLowerCase();
+    if (n.includes(needle)) out.push(o);
+  });
+  return out;
+}
+
+function findByPath(path) {
+  const root = getRoot();
+  if (!root || !path) return null;
+  const segs = String(path).split('/').filter(Boolean);
+  let cur = root;
+  for (const seg of segs) {
+    if (!cur || !cur.children) return null;
+    // support numeric index
+    if (/^\d+$/.test(seg)) {
+      const idx = parseInt(seg, 10);
+      cur = cur.children[idx] || null;
+      continue;
+    }
+    // name match
+    let next = null;
+    for (let i = 0; i < cur.children.length; i++) {
+      const ch = cur.children[i];
+      if (String(ch.name || '') === seg) { next = ch; break; }
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+function findByPropId(token) {
+  // prop:<ID> uses sceneProperties map created by SceneLoader
+  const id = String(token || '').trim();
+  const arr = getGame()?.sceneProperties?.[id] || getGame()?.sceneIds?.[id] || [];
+  return Array.isArray(arr) ? arr.slice() : [];
+}
+
+function findByUUID(uuid) {
+  let found = null;
+  traverse(getRoot(), (o) => {
+    if (found) return;
+    if (o.uuid === uuid) found = o;
+  });
+  return found ? [found] : [];
+}
+
+function cmdFind(query) {
+  const q = String(query || '').trim();
+  if (!q) { log('find: provide a substring or selector'); return; }
+  let results = [];
+  if (q.startsWith('prop:')) {
+    results = findByPropId(q.substring(5));
+  } else if (q.startsWith('uuid:')) {
+    results = findByUUID(q.substring(5));
+  } else {
+    results = findByNameSubstring(q);
+  }
+  Debug.lastFind = results;
+  if (!results.length) { log('find: no matches'); return; }
+  printLines(results.map((o, i) => `[${i}] ${o.name || '(unnamed)'}  ${o.type}  ${humanPathFor(o)}`));
+  // Do not auto-select; prompt
+}
+
+function cmdSelect(token) {
+  const arg = String(token || '').trim();
+  if (!arg) { log('select: provide index, name, path, prop:ID or uuid:...'); return; }
+  let target = null;
+  let source = null;
+  if (/^\d+$/.test(arg)) {
+    const idx = parseInt(arg, 10);
+    target = Debug.lastFind?.[idx] || null;
+    source = 'find';
+  } else if (arg.startsWith('/')) {
+    target = findByPath(arg);
+    source = 'path';
+  } else if (arg.startsWith('prop:')) {
+    const list = findByPropId(arg.substring(5));
+    target = list[0] || null;
+    source = 'prop';
+  } else if (arg.startsWith('uuid:')) {
+    const list = findByUUID(arg.substring(5));
+    target = list[0] || null;
+    source = 'uuid';
+  } else {
+    // plain name: first exact match, else first substring
+    const all = findByNameSubstring(arg);
+    target = (all.find(o => (o.name || '') === arg) || all[0]) || null;
+    source = 'name';
+  }
+  if (!target) { log('select: not found'); return; }
+  Debug.selection.object = target;
+  Debug.selection.path = humanPathFor(target);
+  Debug.selection.source = source;
+  log(`selected: ${target.name || '(unnamed)'}  ${target.type}  ${Debug.selection.path}`);
+}
+
+function cmdWhere() {
+  const o = Debug.selection.object;
+  if (!o) { log('where: nothing selected'); return; }
+  log(Debug.selection.path || humanPathFor(o));
+}
+
+function cmdTree(depthToken) {
+  const o = Debug.selection.object || getRoot();
+  if (!o) { log('tree: no scene'); return; }
+  let maxDepth = Number.isFinite(parseInt(depthToken, 10)) ? (parseInt(depthToken, 10) | 0) : 2;
+  if (String(depthToken || '').toLowerCase() === 'all') maxDepth = 9999;
+  const lines = [];
+  const walk = (node, depth) => {
+    const prefix = '  '.repeat(depth);
+    lines.push(`${prefix}- ${node.name || '(unnamed)'}  ${node.type}  [${node.children?.length || 0}]`);
+    if (depth >= maxDepth) return;
+    const kids = node.children || [];
+    for (let i = 0; i < kids.length; i++) walk(kids[i], depth + 1);
+  };
+  walk(o, 0);
+  printLines(lines.slice(0, 200));
+  if (lines.length > 200) log(`... ${lines.length - 200} more lines truncated ...`);
+}
+
+function cmdListChildren() {
+  const o = Debug.selection.object || getRoot();
+  if (!o) { log('ls: no scene'); return; }
+  const kids = o.children || [];
+  if (!kids.length) { log('ls: (no children)'); return; }
+  printLines(kids.map((c, i) => `[${i}] ${c.name || '(unnamed)'}  ${c.type}  (${c.children?.length || 0})`));
+}
+
+function cmdListGLTFs() {
+  const list = getGame()?.loadedGLTFs || [];
+  if (!list.length) { log('gltf: none loaded'); return; }
+  for (let i = 0; i < list.length; i++) {
+    const entry = list[i];
+    const p = humanPathFor(entry.object);
+    log(`[${i}] ${entry.url}  root=${entry.object?.name || '(unnamed)'}  ${p}`);
+  }
+}
+
+function cmdInfo() {
+  const o = Debug.selection.object;
+  if (!o) { log('info: select a node first'); return; }
+  log(`name=${o.name || '(unnamed)'} type=${o.type} visible=${!!o.visible} children=${o.children?.length || 0}`);
+  try {
+    if (o.position && typeof o.position.x === 'number') {
+      log(`localPos=(${Number(o.position.x).toFixed(2)}, ${Number(o.position.y).toFixed(2)}, ${Number(o.position.z).toFixed(2)})`);
+    }
+  } catch {}
+  const udKeys = Object.keys(o.userData || {});
+  if (udKeys.length) log(`userData keys: ${udKeys.join(', ')}`);
+  const comps = Array.isArray(o.__components) ? o.__components : [];
+  if (comps.length) {
+    log(`components (${comps.length}): ${comps.map(c => c?.propName || c?.__typeName || c?.constructor?.name).join(', ')}`);
+  } else {
+    log('components: (none)');
+  }
+}
+
+function cmdListComponents(filterToken) {
+  const o = Debug.selection.object;
+  if (!o) { log('components: select a node first'); return; }
+  let comps = Array.isArray(o.__components) ? o.__components.slice() : [];
+  if (filterToken) {
+    const needle = String(filterToken).replace(/[\s\-_]/g, '').toLowerCase();
+    comps = comps.filter((c) => {
+      const n = (c?.propName || c?.__typeName || c?.constructor?.name || '').toString().replace(/[\s\-_]/g, '').toLowerCase();
+      return n.includes(needle);
+    });
+  }
+  if (!comps.length) { log('components: (none)'); return; }
+  for (let i = 0; i < comps.length; i++) {
+    const c = comps[i];
+    const name = c?.propName || c?.__typeName || c?.constructor?.name || 'Component';
+    log(`[${i}] ${name}`);
+  }
+}
+
+function parseJSONLoose(text) {
+  if (text == null) return undefined;
+  const s = String(text).trim();
+  if (!s) return undefined;
+  try { return JSON.parse(s); } catch {}
+  // fallbacks: number, boolean, null, undefined, strings without quotes
+  if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s);
+  if (/^(true|false)$/i.test(s)) return /^true$/i.test(s);
+  if (/^null$/i.test(s)) return null;
+  if (/^undefined$/i.test(s)) return undefined;
+  return s;
+}
+
+function setDeep(obj, path, value) {
+  if (!obj || !path) return false;
+  const segs = String(path).split('.').filter(Boolean);
+  let cur = obj;
+  for (let i = 0; i < segs.length - 1; i++) {
+    const key = segs[i];
+    const isIndex = /^\d+$/.test(key);
+    if (isIndex) {
+      const idx = parseInt(key, 10);
+      if (!Array.isArray(cur)) cur = (cur[key] = []);
+      if (!cur[idx]) cur[idx] = {};
+      cur = cur[idx];
+    } else {
+      if (!cur[key] || typeof cur[key] !== 'object') cur[key] = {};
+      cur = cur[key];
+    }
+  }
+  const last = segs[segs.length - 1];
+  if (/^\d+$/.test(last) && Array.isArray(cur)) {
+    cur[parseInt(last, 10)] = value;
+  } else {
+    cur[last] = value;
+  }
+  return true;
+}
+
+function resolveComponentOnSelected(name) {
+  const o = Debug.selection.object;
+  if (!o) return null;
+  const comps = Array.isArray(o.__components) ? o.__components : [];
+  const norm = (s) => String(s || '').replace(/[\s\-_]/g, '').toLowerCase();
+  const want = norm(name);
+  for (const c of comps) {
+    const cn = norm(c?.propName || c?.__typeName || c?.constructor?.name);
+    if (cn === want) return c;
+  }
+  return null;
+}
+
+function cmdAddComponent(args) {
+  const o = Debug.selection.object;
+  if (!o) { log('addcomp: select a node first'); return; }
+  if (!args || args.length < 1) { log('addcomp: usage addcomp <Type> [json]'); return; }
+  const typeName = args[0];
+  const ctor = ComponentRegistry.get(typeName);
+  if (!ctor) { log(`addcomp: component not found '${typeName}'`); return; }
+  const paramsText = args.slice(1).join(' ');
+  const params = parseJSONLoose(paramsText);
+  try {
+    const instance = new ctor({ game: getGame(), object: o, options: params, propName: typeName });
+    if (!instance) { log('addcomp: failed to construct'); return; }
+    o.__components = o.__components || [];
+    o.__components.push(instance);
+    getGame().componentInstances.push(instance);
+    if (typeof instance.Initialize === 'function') Promise.resolve(instance.Initialize()).catch(() => {});
+    log(`addcomp: attached ${typeName}`);
+  } catch (e) {
+    log(`addcomp: error ${e?.message || e}`);
+  }
+}
+
+function cmdRemoveComponent(args) {
+  const o = Debug.selection.object;
+  if (!o) { log('rmcomp: select a node first'); return; }
+  if (!args || args.length < 1) { log('rmcomp: usage rmcomp <Type>'); return; }
+  const typeName = args[0];
+  const inst = resolveComponentOnSelected(typeName);
+  if (!inst) { log(`rmcomp: not found '${typeName}' on selection`); return; }
+  try { if (typeof inst.Dispose === 'function') inst.Dispose(); } catch {}
+  // remove from object list
+  try {
+    const arr = o.__components || [];
+    const idx = arr.indexOf(inst);
+    if (idx >= 0) arr.splice(idx, 1);
+  } catch {}
+  // remove from global list
+  try {
+    const all = getGame().componentInstances || [];
+    const idx = all.indexOf(inst);
+    if (idx >= 0) all.splice(idx, 1);
+  } catch {}
+  log(`rmcomp: removed ${typeName}`);
+}
+
+function cmdSetComponent(args) {
+  if (!args || args.length < 3) { log('setcomp: usage setcomp <Type> <path> <value>'); return; }
+  const [typeName, path, ...rest] = args;
+  const inst = resolveComponentOnSelected(typeName);
+  if (!inst) { log(`setcomp: component '${typeName}' not found on selection`); return; }
+  const valText = rest.join(' ');
+  const value = parseJSONLoose(valText);
+  const ok = setDeep(inst, path, value);
+  if (!ok) { log('setcomp: failed to set path'); return; }
+  // If component exposes Deserialize to rehydrate, try to call lightweight update hook
+  try {
+    const maybeApply = inst?.applyDeserializedState || inst?.Deserialize || null;
+    if (typeof maybeApply === 'function') maybeApply.call(inst, {});
+  } catch {}
+  log(`setcomp: ${typeName}.${path} = ${String(value)}`);
+}
+
+function cmdCallComponent(args) {
+  if (!args || args.length < 2) { log('call: usage call <Type> <method> [jsonArgs]'); return; }
+  const [typeName, method, ...rest] = args;
+  const inst = resolveComponentOnSelected(typeName);
+  if (!inst) { log(`call: component '${typeName}' not found on selection`); return; }
+  const argText = rest.join(' ').trim();
+  let callArgs = [];
+  if (argText) {
+    const parsed = parseJSONLoose(argText);
+    if (Array.isArray(parsed)) callArgs = parsed;
+    else callArgs = [parsed];
+  }
+  const fn = inst?.[method];
+  if (typeof fn !== 'function') { log(`call: method '${method}' not found`); return; }
+  try {
+    const result = fn.apply(inst, callArgs);
+    if (result && typeof result.then === 'function') {
+      result.then((r) => log(`call -> ${String(r)}`)).catch((e) => log(`call err: ${e?.message || e}`));
+    } else {
+      log(`call -> ${String(result)}`);
+    }
+  } catch (e) {
+    log(`call err: ${e?.message || e}`);
+  }
 }
 
 // --- Editor launcher ---
