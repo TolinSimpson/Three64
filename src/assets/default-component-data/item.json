@@ -1,0 +1,25 @@
+{
+  "id": "",
+  "name": "Item",
+  "description": "",
+  "icon": "",
+  "quantity": 1,
+  "maxStack": 1,
+  "isConsumable": false,
+  "isEquipable": true,
+  "equipKey": "Digit1",
+  "isPickup": true,
+  "isDropped": false,
+  "pickupRadius": 0,
+  "autoPickup": false,
+  "customProps": {},
+  "events": {
+    "onConsume": "ItemConsumed",
+    "onEquip": "ItemEquipped",
+    "onUnequip": "ItemUnequipped",
+    "onPickup": "ItemPickedUp",
+    "onDrop": "ItemDropped"
+  }
+}
+
+

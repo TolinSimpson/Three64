@@ -22,6 +22,8 @@ import "./rigidbody.js";
 import "./projectile.js";
 import "./statistic.js";
 import "./statisticBar.js";
+import "./item.js";
+import "./inventory.js";
 export const config = {
   expansionPak: true,
   targetFPS: 30,

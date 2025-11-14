@@ -5,7 +5,11 @@
   "moveBackward": ["KeyS", "ArrowDown"],
   "sprint": ["ShiftLeft", "ShiftRight"],
   "crouch": ["ControlLeft", "ControlRight"],
-  "jump": ["Space"]
+  "jump": ["Space"],
+  "interact": ["KeyE"],
+  "drop": ["KeyG"],
+  "inventoryOpen": ["KeyI", "Tab"],
+  "usePrimary": ["MouseLeft"]
 }
 
 
