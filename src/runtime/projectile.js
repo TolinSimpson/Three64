@@ -1,24 +1,24 @@
 'use strict';
 import { Object3D, Mesh, MeshBasicMaterial, SphereGeometry, Vector3, Quaternion } from "three";
-import { Component, ComponentRegistry, ArchetypeRegistry } from "./component.js";
+import { ComponentRegistry, ArchetypeRegistry } from "./component.js";
+import { Rigidbody } from "./rigidbody.js";
 
-export class Projectile extends Component {
+export class Projectile extends Rigidbody {
 	constructor(ctx) {
 		super(ctx);
 		const o = (ctx && ctx.options) || {};
 		this.speed = typeof o.speed === "number" ? o.speed : 12;
 		this.damage = typeof o.damage === "number" ? o.damage : 10;
-		this.radius = typeof o.radius === "number" ? o.radius : 0.1;
+		this.radius = typeof o.radius === "number" ? o.radius : (typeof this.radius === "number" ? this.radius : 0.1);
 		this.lifeSeconds = typeof o.lifeSeconds === "number" ? o.lifeSeconds : 4.0;
 		this.gravity = o.gravity === true; // if true, let physics handle gravity
+		this.enableGravity = (o.gravity === true); // map to base component expectation
 		this.shape = o.shape || "sphere"; // physics shape
 		this.mass = typeof o.mass === "number" ? o.mass : 0.2;
-		this._body = null;
 		this._active = false;
 		this._ttl = 0;
 		this._lastPos = new Vector3();
 		this._dir = new Vector3(0, 0, 1);
-		this._vel = new Vector3(0, 0, 0);
 		this._shooter = null; // optional to avoid self-hit
 	}
 
@@ -47,19 +47,9 @@ export class Projectile extends Component {
 				this.object.add(mesh);
 			} catch {}
 		}
-		// Create dynamic rigid body if physics available
-		const phys = this.game?.physics || null;
-		if (phys?.addRigidBodyForObject) {
-			this._body = phys.addRigidBodyForObject(this.object, {
-				shape: this.shape || "sphere",
-				type: "dynamic",
-				mass: this.mass,
-				radius: this.radius,
-				linearDamping: 0.01,
-				angularDamping: 0.01,
-			});
-			this._zeroVelocity();
-		}
+		// Create dynamic rigid body (via base)
+		super.Initialize?.();
+		this.zeroVelocity?.();
 		this._ttl = 0;
 		this._active = false;
 	}
@@ -77,42 +67,21 @@ export class Projectile extends Component {
 		this._ttl = Math.max(0, Number(this.options?.lifeSeconds ?? this.lifeSeconds) || this.lifeSeconds);
 		this._active = true;
 		// Place object and set velocity
-		try { this.object.position.copy(pos); } catch {}
-		try {
-			const q = new Quaternion();
-			q.setFromUnitVectors(new Vector3(0, 0, 1), dir);
-			this.object.quaternion.copy(q);
-		} catch {}
-		// Teleport physics body to fire position/orientation (so it doesn't lag or stick to its old place)
-		if (this._body && this.game?.physics?.Ammo) {
-			try {
-				const Ammo = this.game.physics.Ammo;
-				const tr = new Ammo.btTransform();
-				tr.setIdentity();
-				tr.setOrigin(new Ammo.btVector3(pos.x, pos.y, pos.z));
-				const q = this.object.quaternion;
-				tr.setRotation(new Ammo.btQuaternion(q.x, q.y, q.z, q.w));
-				this._body.setWorldTransform(tr);
-				const ms = this._body.getMotionState?.();
-				if (ms && ms.setWorldTransform) ms.setWorldTransform(tr);
-				this._body.setAngularVelocity(new Ammo.btVector3(0, 0, 0));
-				this._body.activate?.();
-			} catch {}
-		}
+		let q = new Quaternion();
+		q.setFromUnitVectors(new Vector3(0, 0, 1), dir);
+		this.teleport?.(pos, q);
 		this.object.visible = true;
 		this._lastPos.copy(this.object.position);
 		const v = typeof speed === "number" ? speed : this.speed;
 		const initialVel = dir.clone().multiplyScalar(v);
-		this._vel.copy(initialVel);
-		this._setVelocity(initialVel);
+		this.setVelocity?.(initialVel);
 	}
 
 	reset() {
 		this._active = false;
 		this._ttl = 0;
 		this._shooter = null;
-		this._vel.set(0, 0, 0);
-		this._zeroVelocity();
+		this.zeroVelocity?.();
 		this.object.visible = false;
 	}
 
@@ -128,7 +97,7 @@ export class Projectile extends Component {
 		if (!hasAmmo) {
 			try {
 				// Integrate position using stored velocity
-				this.object.position.addScaledVector(this._vel, dt);
+				this.object.position.addScaledVector(this._fallbackVel || new Vector3(), dt);
 			} catch {}
 		}
 		const cur = this.object.position.clone();
@@ -186,28 +155,13 @@ export class Projectile extends Component {
 	}
 
 	_setVelocity(vec3) {
-		if (this._body && this.game?.physics?.Ammo) {
-			try {
-				const Ammo = this.game.physics.Ammo;
-				this._body.setLinearVelocity(new Ammo.btVector3(vec3.x, vec3.y, vec3.z));
-				this._body.setAngularVelocity(new Ammo.btVector3(0, 0, 0));
-				this._body.activate?.();
-			} catch {}
-		} else {
-			// Fallback: store velocity for manual integration
-			this._vel.copy(vec3);
-		}
+		// Back-compat: delegate to base
+		this.setVelocity?.(vec3);
 	}
 
 	_zeroVelocity() {
-		if (this._body && this.game?.physics?.Ammo) {
-			try {
-				const Ammo = this.game.physics.Ammo;
-				this._body.setLinearVelocity(new Ammo.btVector3(0, 0, 0));
-				this._body.setAngularVelocity(new Ammo.btVector3(0, 0, 0));
-				this._body.activate?.();
-			} catch {}
-		}
+		// Back-compat: delegate to base
+		this.zeroVelocity?.();
 	}
 
 	_despawn() {

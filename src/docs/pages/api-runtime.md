@@ -76,6 +76,10 @@ This section lists primary exports for each runtime module. File paths are under
 - `export class ParticleSystem`
   - Particle emitters/effects with per-frame budgeting.
 
+## rigidbody.js
+- `export class Rigidbody extends Component`
+  - General-purpose Ammo rigid body component with simple collision and volume events.
+
 ## physics.js
 - `export class PhysicsWorld`
   - Ammo world wrapper; manages bodies and simulation step.
