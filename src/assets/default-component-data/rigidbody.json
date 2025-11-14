@@ -1,0 +1,21 @@
+{
+  "type": "Rigidbody",
+  "params": {
+    "shape": "box",
+    "type": "dynamic",
+    "mass": 1,
+    "friction": 0.5,
+    "restitution": 0,
+    "linearDamping": 0.01,
+    "angularDamping": 0.01,
+    "enableGravity": true,
+    "events": {
+      "onCollision": "RigidbodyCollision",
+      "onVolumeEnter": "",
+      "onVolumeExit": "",
+      "onVolumeStay": ""
+    },
+    "useVolume": false
+  },
+  "paramDescriptions": []
+}

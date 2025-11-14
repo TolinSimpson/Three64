@@ -1,25 +1,121 @@
 {
-  "id": "",
-  "name": "Item",
-  "description": "",
-  "icon": "",
-  "quantity": 1,
-  "maxStack": 1,
-  "isConsumable": false,
-  "isEquipable": true,
-  "equipKey": "Digit1",
-  "isPickup": true,
-  "isDropped": false,
-  "pickupRadius": 0,
-  "autoPickup": false,
-  "customProps": {},
-  "events": {
-    "onConsume": "ItemConsumed",
-    "onEquip": "ItemEquipped",
-    "onUnequip": "ItemUnequipped",
-    "onPickup": "ItemPickedUp",
-    "onDrop": "ItemDropped"
-  }
+  "type": "Item",
+  "params": {
+    "id": "",
+    "name": "Item",
+    "description": "",
+    "icon": "",
+    "quantity": 1,
+    "maxStack": 1,
+    "isConsumable": false,
+    "isEquipable": true,
+    "equipKey": "Digit1",
+    "isPickup": true,
+    "isDropped": false,
+    "pickupRadius": 0,
+    "autoPickup": false,
+    "customProps": {},
+    "events": {
+      "onConsume": "ItemConsumed",
+      "onEquip": "ItemEquipped",
+      "onUnequip": "ItemUnequipped",
+      "onPickup": "ItemPickedUp",
+      "onDrop": "ItemDropped"
+    }
+  },
+  "paramDescriptions": [
+    {
+      "key": "id",
+      "label": "ID",
+      "type": "string",
+      "description": "Unique item id (optional)."
+    },
+    {
+      "key": "name",
+      "label": "Name",
+      "type": "string",
+      "description": "Display name."
+    },
+    {
+      "key": "description",
+      "label": "Description",
+      "type": "string",
+      "description": "Tooltip/description."
+    },
+    {
+      "key": "icon",
+      "label": "Icon URL/Key",
+      "type": "string",
+      "description": "Icon resource identifier."
+    },
+    {
+      "key": "quantity",
+      "label": "Quantity",
+      "type": "number",
+      "min": 1,
+      "max": 999,
+      "step": 1,
+      "description": "Initial quantity."
+    },
+    {
+      "key": "maxStack",
+      "label": "Max Stack",
+      "type": "number",
+      "min": 1,
+      "max": 999,
+      "step": 1,
+      "description": "Maximum items per stack."
+    },
+    {
+      "key": "isConsumable",
+      "label": "Consumable",
+      "type": "boolean",
+      "description": "If true, consuming reduces quantity."
+    },
+    {
+      "key": "isEquipable",
+      "label": "Equipable",
+      "type": "boolean",
+      "description": "If true, item can be equipped."
+    },
+    {
+      "key": "equipKey",
+      "label": "Equip Key (KeyboardEvent.code)",
+      "type": "string",
+      "description": "Key to toggle equip."
+    },
+    {
+      "key": "isPickup",
+      "label": "Is Pickup",
+      "type": "boolean",
+      "description": "If true, can be picked up from world."
+    },
+    {
+      "key": "isDropped",
+      "label": "Is Dropped",
+      "type": "boolean",
+      "description": "Spawned as a dropped item."
+    },
+    {
+      "key": "pickupRadius",
+      "label": "Pickup Radius",
+      "type": "number",
+      "min": 0,
+      "max": 10,
+      "step": 0.1,
+      "description": "Optional proximity radius."
+    },
+    {
+      "key": "autoPickup",
+      "label": "Auto Pickup",
+      "type": "boolean",
+      "description": "Pickup when in radius (no key)."
+    },
+    {
+      "key": "customProps",
+      "label": "Custom Props",
+      "type": "object",
+      "description": "Arbitrary JSON object attached to item."
+    }
+  ]
 }
-
-

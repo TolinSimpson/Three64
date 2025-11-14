@@ -1,0 +1,8 @@
+{
+  "type": "Pool",
+  "params": {
+    "items": [],
+    "autoScan": true
+  },
+  "paramDescriptions": []
+}
