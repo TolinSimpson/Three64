@@ -198,7 +198,14 @@ export class Agent extends Component {
 
   FixedUpdate(dt, app) {
     if (!this.controller) return;
-    const goal = this._getTargetPosition();
+    let goal = this._getTargetPosition();
+    // Fallback: use player rig/camera rig as target if none explicitly set
+    if (!goal) {
+      const rig = app?.player?.rig || app?.rendererCore?.camera?.parent || null;
+      if (rig && rig.position) {
+        goal = new Vector3(rig.position.x, rig.position.y, rig.position.z);
+      }
+    }
     if (!goal) {
       this.controller.setMoveInput(0, 0, false, false);
       this.controller.fixedStep(app, dt);
@@ -215,13 +222,25 @@ export class Agent extends Component {
         this._timeSinceRepath = 0;
       }
       const nextPoint = this._nextWaypoint(goal);
-      this._moveToward(nextPoint, dt, app);
+      const shouldAdvance = this._shouldAdvance(goal, app);
+      if (shouldAdvance) {
+        this._moveToward(nextPoint, dt, app);
+      } else {
+        this.controller.setMoveInput(0, 0, false, false);
+        this.controller.fixedStep(app, dt);
+      }
       // Also tick ranged attack
       this._tickRanged(dt, app, goal);
       return;
     }
     // Fallback: direct steering toward goal
-    this._moveToward(goal, dt, app);
+    const shouldAdvance = this._shouldAdvance(goal, app);
+    if (shouldAdvance) {
+      this._moveToward(goal, dt, app);
+    } else {
+      this.controller.setMoveInput(0, 0, false, false);
+      this.controller.fixedStep(app, dt);
+    }
     this._tickRanged(dt, app, goal);
   }
 
@@ -260,7 +279,11 @@ export class Agent extends Component {
     const to = targetVec.clone().sub(pos);
     to.y = 0;
     const dist = to.length();
-    if (dist < this.arriveRadius) {
+    // For 'seek' behavior, ensure a minimum 1m standoff
+    const effectiveArrive = (String(this.behavior).toLowerCase() === 'seek')
+      ? Math.max(1.0, this.arriveRadius)
+      : this.arriveRadius;
+    if (dist < effectiveArrive) {
       this.controller.setMoveInput(0, 0, false, false);
       this.controller.fixedStep(app, dt);
       return;
@@ -303,6 +326,38 @@ export class Agent extends Component {
     this._shootProjectile(app, targetPos);
   }
 
+  _hasLineOfSight(targetPos, app) {
+    try {
+      const phys = app?.physics || null;
+      if (!phys || typeof phys.raycast !== 'function') return true;
+      const start = this.controller.position.clone();
+      start.y += 1.4;
+      const delta = targetPos.clone().sub(start);
+      const dist = delta.length();
+      if (dist < 1e-4) return true;
+      const dir = delta.multiplyScalar(1 / dist);
+      const hit = phys.raycast(start, dir, dist);
+      return !hit;
+    } catch {
+      return true;
+    }
+  }
+
+  _shouldAdvance(targetPos, app) {
+    if (String(this.behavior).toLowerCase() !== 'ranged') return true;
+    try {
+      const to = targetPos.clone().sub(this.controller.position);
+      to.y = 0;
+      const dist = to.length();
+      const inRange = dist <= this.attackRange;
+      const hasLOS = this._hasLineOfSight(targetPos, app);
+      // Advance only when we are out of range or we do not have line-of-sight
+      return !(inRange && hasLOS);
+    } catch {
+      return true;
+    }
+  }
+
   _shootProjectile(app, targetPos) {
     if (!app?.pool) return;
     let obj = null;
@@ -323,8 +378,10 @@ export class Agent extends Component {
     try { this.object?.getWorldPosition?.(start); } catch {}
     if (!Number.isFinite(start.y)) start.copy(this.controller.position);
     start.y += 1.4;
-    const dir = targetPos.clone().sub(start);
-    dir.y = 0;
+    // Aim directly toward the target (raise aim to approximate eye height if target is the rig)
+    const aim = targetPos ? targetPos.clone() : start.clone().add(new Vector3(0, 0, -1));
+    if (aim && Math.abs(aim.y - start.y) < 0.5) aim.y += 1.6;
+    const dir = aim.clone().sub(start);
     if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
     dir.normalize();
     proj.reset?.();

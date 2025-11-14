@@ -18,6 +18,7 @@ export class Projectile extends Component {
 		this._ttl = 0;
 		this._lastPos = new Vector3();
 		this._dir = new Vector3(0, 0, 1);
+		this._vel = new Vector3(0, 0, 0);
 		this._shooter = null; // optional to avoid self-hit
 	}
 
@@ -82,16 +83,35 @@ export class Projectile extends Component {
 			q.setFromUnitVectors(new Vector3(0, 0, 1), dir);
 			this.object.quaternion.copy(q);
 		} catch {}
+		// Teleport physics body to fire position/orientation (so it doesn't lag or stick to its old place)
+		if (this._body && this.game?.physics?.Ammo) {
+			try {
+				const Ammo = this.game.physics.Ammo;
+				const tr = new Ammo.btTransform();
+				tr.setIdentity();
+				tr.setOrigin(new Ammo.btVector3(pos.x, pos.y, pos.z));
+				const q = this.object.quaternion;
+				tr.setRotation(new Ammo.btQuaternion(q.x, q.y, q.z, q.w));
+				this._body.setWorldTransform(tr);
+				const ms = this._body.getMotionState?.();
+				if (ms && ms.setWorldTransform) ms.setWorldTransform(tr);
+				this._body.setAngularVelocity(new Ammo.btVector3(0, 0, 0));
+				this._body.activate?.();
+			} catch {}
+		}
 		this.object.visible = true;
 		this._lastPos.copy(this.object.position);
 		const v = typeof speed === "number" ? speed : this.speed;
-		this._setVelocity(dir.clone().multiplyScalar(v));
+		const initialVel = dir.clone().multiplyScalar(v);
+		this._vel.copy(initialVel);
+		this._setVelocity(initialVel);
 	}
 
 	reset() {
 		this._active = false;
 		this._ttl = 0;
 		this._shooter = null;
+		this._vel.set(0, 0, 0);
 		this._zeroVelocity();
 		this.object.visible = false;
 	}
@@ -103,6 +123,14 @@ export class Projectile extends Component {
 		if (this._ttl <= 0) { this._despawn(); return; }
 		// Track previous position for ray sweep
 		const prev = this._lastPos;
+		// Manual integration path when physics is unavailable
+		const hasAmmo = !!(this.game?.physics?.Ammo);
+		if (!hasAmmo) {
+			try {
+				// Integrate position using stored velocity
+				this.object.position.addScaledVector(this._vel, dt);
+			} catch {}
+		}
 		const cur = this.object.position.clone();
 		// Raycast against static world to stop on impact
 		const phys = this.game?.physics || null;
@@ -166,10 +194,8 @@ export class Projectile extends Component {
 				this._body.activate?.();
 			} catch {}
 		} else {
-			// Fallback: manually integrate without physics
-			try {
-				this.object.position.addScaledVector(vec3, 1 / 60);
-			} catch {}
+			// Fallback: store velocity for manual integration
+			this._vel.copy(vec3);
 		}
 	}
 
