@@ -48,6 +48,7 @@ This section lists primary exports for each runtime module. File paths are under
 - `export function uiAtlasWithinBudget(...)`
 - `export function createApp()`
   - App bootstrapping; wires systems and exposes minimal game API.
+  - Exposes `app.pool` (pool manager) after initialization.
 
 ## eventSystem.js
 - `export class EventSystem`
@@ -101,6 +102,21 @@ This section lists primary exports for each runtime module. File paths are under
 ## skybox.js
 - `export function createSkybox(camera, { ... })`
   - Utility for skybox creation with engine conventions.
+
+## pool.js
+- `export class Pool extends Component`
+  - Singleton component that configures pooling and prewarm behavior.
+  - Options:
+    - `items[]`: `{ archetype, size, prewarm, max, overflow, overrides?, traits? }`
+    - `autoScan` (boolean): when true, scans GLTF userData (`archetype`, `pool.size`, `pool.prewarm`) and prewarms pools.
+- `export function ensurePoolSingleton(game)`
+  - Ensures a singleton Pool instance exists; used by the engine after scene load to enable scanning.
+- `app.pool` API:
+  - `prewarm(name, count, { overrides, traits })`
+  - `obtain(name, { overrides, traits }) -> Object3D | null`
+  - `release(object)`
+  - `setPolicy(name, { max, overflow })`
+    - `overflow`: `"create"` | `"drop"` | `"reuseOldest"`
 
 Notes:
 - Many modules expose additional methods/fields beyond the signatures above. Consult source for behaviors and extension points.

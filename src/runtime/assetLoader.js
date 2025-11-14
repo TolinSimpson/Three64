@@ -501,9 +501,8 @@ export class SceneLoader {
       }
       return out;
     };
-    // Collect spawn requests and optional pool prewarm instructions
+    // Collect spawn requests
     const spawnRequests = [];
-    const prewarm = new Map(); // archetype -> { size, overrides, traits }
     const nameInstRegex = /\[inst\s*=\s*([^\]\s]+)\]/i;
     root.updateWorldMatrix(true, true);
     root.traverse((obj) => {
@@ -526,31 +525,13 @@ export class SceneLoader {
           traits[tk] = v === true || v === "true" || v === 1 || v === "1" ? true : v;
         }
       }
-      // pooling under pool.*
-      const poolCfg = {};
-      for (const [k, v] of Object.entries(ud)) {
-        if (k.startsWith("pool.")) {
-          poolCfg[k.substring(5)] = v;
-        }
-      }
-      if (poolCfg.prewarm === true || poolCfg.prewarm === "true") {
-        const size = Number(poolCfg.size || poolCfg.count || 0) | 0;
-        const key = String(archetype || "");
-        if (key) {
-          const existing = prewarm.get(key) || { size: 0, overrides: {}, traits: {} };
-          existing.size = Math.max(existing.size, size);
-          existing.overrides = overrides || existing.overrides;
-          existing.traits = traits || existing.traits;
-          prewarm.set(key, existing);
-        }
-      }
       // instancing key
       const instKey = ud.instKey || (() => {
         const m = name.match(nameInstRegex);
         return m && m[1] ? m[1] : null;
       })();
       if (archetype) {
-        spawnRequests.push({ obj, archetype, overrides, traits, poolCfg });
+        spawnRequests.push({ obj, archetype, overrides, traits });
         // Use placeholder purely as a marker
         try { obj.visible = false; } catch {}
       } else if (instKey) {
@@ -558,11 +539,6 @@ export class SceneLoader {
         try { obj.userData.__instKey = String(instKey); } catch {}
       }
     });
-    // Prewarm
-    for (const [key, info] of prewarm.entries()) {
-      if (!key || !info || !info.size) continue;
-      try { this.game.pool.prewarm(key, info.size, { overrides: info.overrides, traits: info.traits }); } catch {}
-    }
     // Spawn archetypes and instantiate components attached via userData
     const tmpPos = new Vector3();
     const tmpQuat = new Quaternion();

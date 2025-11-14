@@ -10,6 +10,7 @@ import { EventSystem } from "./eventSystem.js";
 import { UISystem } from "./uiSystem.js";
 import { Statistic } from "./statistic.js";
 import { StatisticBar } from "./statisticBar.js";
+import { ensurePoolSingleton } from "./pool.js";
 import { ArchetypeRegistry } from "./component.js";
 import "./navmesh.js";
 import "./raycaster.js";
@@ -17,6 +18,7 @@ import "./volume.js";
 import "./player.js"; // ensure Player component registers itself via ComponentRegistry
 import "./agent.js";
 import "./locomotion.js";
+import "./rigidbody.js";
 import "./projectile.js";
 import "./statistic.js";
 import "./statisticBar.js";
@@ -111,12 +113,20 @@ let app;
 class PoolManager {
   constructor(game) {
     this.game = game;
-    this._pools = new Map(); // name -> { idle: Object3D[] }
+    this._pools = new Map(); // name -> { idle: Object3D[], active: Object3D[], createdCount: number }
+    this._policies = new Map(); // name -> { max?: number, overflow?: "create"|"drop"|"reuseOldest" }
   }
   _getPool(name) {
     const key = String(name);
-    if (!this._pools.has(key)) this._pools.set(key, { idle: [] });
+    if (!this._pools.has(key)) this._pools.set(key, { idle: [], active: [], createdCount: 0 });
     return this._pools.get(key);
+  }
+  setPolicy(name, { max, overflow } = {}) {
+    const key = String(name);
+    const policy = this._policies.get(key) || {};
+    if (typeof max === "number") policy.max = Math.max(0, max | 0);
+    if (typeof overflow === "string") policy.overflow = overflow;
+    this._policies.set(key, policy);
   }
   prewarm(name, count = 0, opts = undefined) {
     const n = Math.max(0, count | 0);
@@ -128,13 +138,36 @@ class PoolManager {
       try { obj.visible = false; } catch {}
       try { obj.userData = obj.userData || {}; obj.userData.__pooled = true; } catch {}
       pool.idle.push(obj);
+      pool.createdCount = (pool.createdCount | 0) + 1;
     }
   }
   obtain(name, { overrides = {}, traits = {} } = {}) {
     const pool = this._getPool(name);
     let obj = pool.idle.pop();
     if (!obj) {
-      obj = ArchetypeRegistry.create(this.game, name, { overrides, traits });
+      // Enforce policy if defined
+      const policy = this._policies.get(String(name)) || {};
+      const max = (typeof policy.max === "number") ? policy.max : undefined;
+      const overflow = policy.overflow || "create";
+      if (max != null && (pool.createdCount | 0) >= max) {
+        if (overflow === "drop") {
+          return null;
+        } else if (overflow === "reuseOldest" && pool.active.length > 0) {
+          // Reuse and return oldest active instance
+          obj = pool.active.shift();
+          try {
+            if (obj?.parent) obj.parent.remove(obj);
+            obj.visible = true;
+          } catch {}
+        } else {
+          // overflow === "create" (default) -> continue to create a new one
+          obj = ArchetypeRegistry.create(this.game, name, { overrides, traits });
+          if (obj) pool.createdCount = (pool.createdCount | 0) + 1;
+        }
+      } else {
+        obj = ArchetypeRegistry.create(this.game, name, { overrides, traits });
+        if (obj) pool.createdCount = (pool.createdCount | 0) + 1;
+      }
     }
     if (!obj) return null;
     try {
@@ -144,6 +177,8 @@ class PoolManager {
       obj.userData.__traits = traits || {};
       obj.userData.__overrides = overrides || {};
     } catch {}
+    // Track as active
+    pool.active.push(obj);
     return obj;
   }
   release(obj) {
@@ -153,6 +188,11 @@ class PoolManager {
     try {
       if (obj.parent) obj.parent.remove(obj);
       obj.visible = false;
+    } catch {}
+    // Remove from active list if present
+    try {
+      const idx = pool.active.indexOf(obj);
+      if (idx >= 0) pool.active.splice(idx, 1);
     } catch {}
     pool.idle.push(obj);
   }
@@ -330,6 +370,7 @@ export async function start() {
         try { baseUrlForDef = new URL('.', loadUrl).href; } catch { baseUrlForDef = new URL("build/assets/", document.baseURI).href; }
         const def = { assets: [ { type: "gltf", url: loadUrl } ] };
         await loader.loadFromDefinition(def, baseUrlForDef);
+        try { ensurePoolSingleton(app)?.scanAndPrewarm?.(); } catch {}
         app.loading.setProgress(1);
         app.loading.hide();
         animate();
@@ -349,6 +390,7 @@ export async function start() {
       const url = (mod && mod.default) || mod;
       const def = { assets: [{ type: "gltf", url, physics: { collider: "convex", mergeChildren: true, visible: false } }] };
       await loader.loadFromDefinition(def, new URL('.', url).href);
+      try { ensurePoolSingleton(app)?.scanAndPrewarm?.(); } catch {}
       app.loading.setProgress(1);
       app.loading.hide();
     } catch (e) {
@@ -371,6 +413,7 @@ export async function start() {
         ]
       };
       await loader.loadFromDefinition(def, baseUrl);
+      try { ensurePoolSingleton(app)?.scanAndPrewarm?.(); } catch {}
       app.loading.setProgress(1);
       app.loading.hide();
     } catch (e) {

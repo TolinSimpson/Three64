@@ -58,8 +58,8 @@ During scene load:
 - The entity is placed at the object's world transform.
 - The authoring object is hidden (serves as a spawn marker).
 
-2) Pool prewarm:
-- If pool.prewarm is true, the loader prewarms the pool using pool.size (max across markers for that archetype).
+2) Pool prewarm (via Pool component):
+- If a `Pool` component with `autoScan` is present, it scans GLTF userData and prewarms pools. For each archetype where `pool.prewarm=true`, it aggregates the maximum `pool.size` across markers and calls `app.pool.prewarm(...)`.
 
 3) Static instancing:
 - Objects tagged with instKey (or name "[inst=...]") are grouped by (instKey, geometry, material).
@@ -130,6 +130,7 @@ game.onUpdate((dt) => updateEnemies(game, dt));
 - t.*: trait flags/values.
 - pool.size: integer count.
 - pool.prewarm: boolean.
+  - Prewarm is handled by the `Pool` component's scan; ensure a Pool is authored (or configured) to enable auto prewarm.
 - instKey: string for static instancing; or name tag "[inst=key]".
 
 

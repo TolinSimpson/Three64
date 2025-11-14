@@ -75,3 +75,15 @@ Example `Agent` config for a ranged NPC:
 On impact or close proximity to the Player rig, the projectile searches for a `Statistic` component named `health` and applies a negative delta equal to `damage`. The UI (via `UISystem`) listens to `health` updates and reflects changes if the default HUD is present.
 
 
+## GLTF authoring for pooled Projectile
+When authoring in Blender/GLTF, you can place a spawn marker that requests pool prewarm for the `Projectile` archetype:
+```json
+{
+  "archetype": "Projectile",
+  "a.speed": 14,
+  "pool.size": 24,
+  "pool.prewarm": true
+}
+```
+Ensure a `Pool` component is present with `autoScan` enabled (default) so these hints are detected and prewarm is performed at load.
+
