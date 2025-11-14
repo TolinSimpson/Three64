@@ -27,6 +27,10 @@ export class MainMenu {
       this.hide();
       this.settingsMenu?.show();
     }));
+    // External request to show menu (e.g., from Settings "Return to Main Menu")
+    this._unsubs.push(this.game.ui.on('menu:show', () => {
+      this.show();
+    }));
   }
 
   async startDefaultScene() {

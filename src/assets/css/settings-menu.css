@@ -20,6 +20,24 @@
 .settings-card h2 {
   margin: 0 0 12px 0;
 }
+.settings-card .tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.settings-card .tab-btn {
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #1b1b1b;
+  color: #ddd;
+  cursor: pointer;
+}
+.settings-card .tab-btn.active {
+  background: #2a2a2a;
+  color: #fff;
+  border-color: #666;
+}
 .settings-card section {
   margin: 12px 0;
   padding: 10px;
@@ -37,6 +55,35 @@
   color: #e6e6e6;
   border: 1px solid #333;
   border-radius: 4px;
+}
+.kb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kb-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.kb-action {
+  color: #ccc;
+}
+.kb-value {
+  color: #9fd3ff;
+  font-family: monospace;
+}
+.kb-btn {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: #222;
+  color: #fff;
+  cursor: pointer;
+}
+.kb-btn:hover {
+  background: #2a2a2a;
 }
 .settings-card .actions {
   display: flex;
