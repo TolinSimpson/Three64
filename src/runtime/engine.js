@@ -24,6 +24,8 @@ import "./statistic.js";
 import "./statisticBar.js";
 import "./item.js";
 import "./inventory.js";
+import { MainMenu } from "./mainMenu.js";
+import { SettingsMenu } from "./settingsMenu.js";
 export const config = {
   expansionPak: true,
   targetFPS: 30,
@@ -340,9 +342,29 @@ export async function start() {
   createApp();
   const params = new URLSearchParams(window.location.search);
   const gltfUrlParam = params.get("gltf");
-  const sceneParam = params.get("scene") || "showcase";
-  const scenesIndex = await loadJSON("build/assets/config/scene-manifest.json");
-  let entry = (scenesIndex.scenes || []).find(s => s.id === sceneParam) || (scenesIndex.scenes || [])[0];
+  const sceneParam = params.get("scene") || null;
+
+  // Initialize settings and main menu systems
+  const settingsMenu = new SettingsMenu(app);
+  await settingsMenu.init();
+  const mainMenu = new MainMenu(app, settingsMenu);
+  await mainMenu.init();
+
+  // If no explicit scene/glTF requested, show the main menu and return to animation loop
+  if (!gltfUrlParam && !sceneParam) {
+    try { mainMenu.show(); } catch {}
+    animate();
+    return;
+  }
+
+  // If a scene ID is provided, try to read manifest entry (optional)
+  let entry = null;
+  if (sceneParam) {
+    try {
+      const scenesIndex = await loadJSON("build/assets/config/scene-manifest.json");
+      entry = (scenesIndex.scenes || []).find(s => s.id === sceneParam) || null;
+    } catch {}
+  }
   if (gltfUrlParam) {
     try {
       app.loading.show("Loading GLTF...");
@@ -405,7 +427,7 @@ export async function start() {
       app.loading.show("Loading scene...");
       const loader = new SceneLoader(app);
       const baseUrl = new URL("build/assets/", document.baseURI).href;
-      const def = {
+      const def = entry && entry.assets ? entry : {
         assets: [
           {
             type: "gltf",

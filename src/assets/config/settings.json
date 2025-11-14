@@ -1,0 +1,25 @@
+{
+  "audio": {
+    "masterVolume": 1
+  },
+  "graphics": {
+    "expansionPak": true,
+    "doubleSided": false,
+    "targetFPS": 30
+  },
+  "keybinds": {
+    "moveLeft": ["KeyA", "ArrowLeft"],
+    "moveRight": ["KeyD", "ArrowRight"],
+    "moveForward": ["KeyW", "ArrowUp"],
+    "moveBackward": ["KeyS", "ArrowDown"],
+    "sprint": ["ShiftLeft", "ShiftRight"],
+    "crouch": ["ControlLeft", "ControlRight"],
+    "jump": ["Space"],
+    "interact": ["KeyE"],
+    "drop": ["KeyG"],
+    "inventoryOpen": ["KeyI", "Tab"],
+    "usePrimary": ["MouseLeft"]
+  }
+}
+
+

@@ -1,6 +1,16 @@
 {
   "scenes": [
-    {  }
+    {
+      "id": "default",
+      "title": "Default Scene",
+      "assets": [
+        {
+          "type": "gltf",
+          "url": "models/default-scene.glb",
+          "physics": { "collider": "convex", "mergeChildren": true, "visible": false }
+        }
+      ]
+    }
   ]
 }
 
