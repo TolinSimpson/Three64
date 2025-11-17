@@ -2,6 +2,8 @@
 
 A lightweight Three.js-based engine with Ammo.js physics and a Blender-driven authoring workflow.
 
+Default engine settings are set to emulate the Nintendo64's constraints.
+
 This README is a quick-start. Full docs live in `src/docs/pages/` and render directly on GitHub.
 
 ## Features
@@ -46,11 +48,14 @@ Notes:
 - Production builds disable dev mode and do not include `/public/docs`.
 - Entry: `src/runtime/engine.js` → Output: `public/build/runtime.js`.
 
-## Documentation (browse on GitHub)
+In development, press F1 for the debug overlay. An “Open Docs” button appears there (dev-only). Production builds keep dev features disabled.
+
+## Documentation
 - Getting Started
   - [Intro](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/intro.md)
   - [Setup & Build](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/setup-build.md)
   - [Scene Conventions](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/scene-conventions.md)
+  - [Assets Folder Structure](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/assets-folder-structure.md)
 - Asset Authoring (Blender)
   - [Asset Authoring](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/asset-authoring.md)
   - [Blender add-on README](https://github.com/TolinSimpson/Three64/blob/main/src/blender/README.md)
@@ -88,5 +93,3 @@ Notes:
     - [Statistic Bar](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/runtime-statisticBar.md)
     - [UI System](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/runtime-uiSystem.md)
     - [Volume](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/runtime-volume.md)
-
-In development, press F1 for the debug overlay. An “Open Docs” button appears there (dev-only). Production builds keep dev features disabled.
