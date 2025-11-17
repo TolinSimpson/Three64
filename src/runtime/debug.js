@@ -349,16 +349,16 @@ export class BudgetTracker {
   withinTriangleBudget() { return this.frameTriangles <= (config.budgets.trisPerFrame || Infinity); }
   withinParticleBudget() {
     const p = config.budgets.particles;
-    const cap = config.expansionPak ? p.maxActiveExpansion : p.maxActiveBase;
+    const cap = p.maxActive;
     return this.frameParticles <= (cap || Infinity);
   }
   withinUITilesBudget() {
     const ui = config.budgets.ui;
-    const cap = config.expansionPak ? ui.perFrameTilesExpansion : ui.perFrameTilesBase;
+    const cap = ui.perFrameTiles;
     return this.frameUITiles <= (cap || Infinity);
   }
   withinRAMBudget() {
-    const cap = config.expansionPak ? config.budgets.ramBytesExpansion : config.budgets.ramBytesBase;
+    const cap = config.budgets.ramBytes;
     return this.cumulativeBytes <= (cap || Infinity);
   }
 }

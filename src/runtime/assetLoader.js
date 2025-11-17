@@ -15,7 +15,7 @@ import {
   InstancedMesh,
 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { fitsInTMEM, config } from "./engine.js";
+import { fitsInTextureMemory, config } from "./engine.js";
 import { BudgetTracker } from "./debug.js";
 import { ArchetypeRegistry, ComponentRegistry } from "./component.js";
 import { loadJSON } from "./io.js";
@@ -156,10 +156,10 @@ export class GLTFAssetLoader {
       const height = img?.height || tex.source?.data?.height || 0;
       const bpp = 8; // PNG-8 assumption post-quantization
       const paletteBytes = 256 * 4; // 256 colors RGBA palette worst-case
-      const fits = fitsInTMEM({ width, height, bpp, paletteBytes });
+      const fits = fitsInTextureMemory({ width, height, bpp, paletteBytes });
       if (!fits) {
         const bytes = (width * height * bpp) / 8 + paletteBytes;
-        const tiles = Math.ceil(bytes / (editorConfig.budgets.tmemBytes || 1));
+        const tiles = Math.ceil(bytes / Math.max(1, (config?.budgets?.textureMemoryBytes || 1)));
         tilesUsed += tiles;
       } else {
         tilesUsed += 1;

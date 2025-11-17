@@ -36,8 +36,6 @@ export class SettingsMenu {
     const vol = root.querySelector('[data-setting="audio.masterVolume"]');
     if (vol) vol.value = String(this.settings?.audio?.masterVolume ?? 1);
     // Graphics
-    const exp = root.querySelector('[data-setting="graphics.expansionPak"]');
-    if (exp) exp.checked = !!(this.settings?.graphics?.expansionPak ?? config.expansionPak);
     const dbl = root.querySelector('[data-setting="graphics.doubleSided"]');
     if (dbl) dbl.checked = !!(this.settings?.graphics?.doubleSided ?? config.renderer.defaultDoubleSided);
     const fps = root.querySelector('[data-setting="graphics.targetFPS"]');
@@ -88,7 +86,6 @@ export class SettingsMenu {
       masterVolume: Number((get('[data-setting="audio.masterVolume"]') || {}).value || 1)
     };
     const graphics = {
-      expansionPak: !!(get('[data-setting="graphics.expansionPak"]') || {}).checked,
       doubleSided: !!(get('[data-setting="graphics.doubleSided"]') || {}).checked,
       targetFPS: Number((get('[data-setting="graphics.targetFPS"]') || {}).value || config.targetFPS)
     };
@@ -101,7 +98,6 @@ export class SettingsMenu {
     saveLocal(STORAGE_KEY, this.settings);
     // Apply graphics settings immediately
     if (this.settings?.graphics) {
-      config.expansionPak = !!this.settings.graphics.expansionPak;
       config.targetFPS = Math.max(15, Math.min(60, Number(this.settings.graphics.targetFPS) || 30));
       if (this.settings.graphics.doubleSided != null) {
         config.renderer.defaultDoubleSided = !!this.settings.graphics.doubleSided;

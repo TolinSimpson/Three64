@@ -20,9 +20,7 @@ export class ParticleSystem {
   constructor({ atlasTexture }) {
     this.atlas = atlasTexture || null;
     this.camera = null;
-    this.maxParticles = config.expansionPak
-      ? config.budgets.particles.maxActiveExpansion
-      : config.budgets.particles.maxActiveBase;
+    this.maxParticles = config.budgets.particles.maxActive;
     this.count = 0;
     this._positions = new Array(this.maxParticles);
     this._scales = new Array(this.maxParticles);

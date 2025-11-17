@@ -26,81 +26,81 @@ import "./item.js";
 import "./inventory.js";
 import { MainMenu } from "./mainMenu.js";
 import { SettingsMenu } from "./settingsMenu.js";
-export const config = {
-  expansionPak: true,
-  targetFPS: 30,
-  // If true, create a default Player bound to the camera rig at startup.
-  // Set to false to rely on GLTF-authored Player components for spawn.
-  createDefaultPlayer: false,
-  renderer: {
-    internalWidthBase: 320,
-    internalHeightBase: 240,
-    internalWidthExpansion: 640,
-    internalHeightExpansion: 480,
-    // If true, force all imported materials to render double-sided by default
-    defaultDoubleSided: false,
-  },
-  budgets: {
-    trisPerFrame: 5333,
-    ramBytesBase: 4 * 1024 * 1024,
-    ramBytesExpansion: 8 * 1024 * 1024,
-    tmemBytes: 4096,
-    maxBonesPerMesh: 40,
-    audio: {
-      maxVoices: 24,
-      maxRateHz: 44100,
+export let config = null;
+
+async function loadEngineConfig() {
+  // Fallback defaults if JSON is unavailable
+  const fallback = {
+    targetFPS: 30,
+    renderer: {
+      internalWidth: 640,
+      internalHeight: 480,
+      defaultDoubleSided: false,
     },
-    particles: {
-      maxActiveBase: 256,
-      maxActiveExpansion: 512,
-      trisPerQuad: 2,
+    budgets: {
+      trisPerFrame: 5333,
+      ramBytes: 8 * 1024 * 1024,
+      textureMemoryBytes: 4096,
+      maxBonesPerMesh: 40,
+      audio: { maxVoices: 24, maxRateHz: 44100 },
+      particles: { maxActive: 512, trisPerQuad: 2 },
+      ui: {
+        allowedFormats: ["PNG8", "PNG_RGBA_SMALL"],
+        maxSpriteSize: 96,
+        maxAtlasSize: { w: 512, h: 256 },
+        perFrameTiles: 12,
+        requireTileMultiple: 8,
+      },
     },
-    ui: {
-      allowedFormats: ["PNG8", "PNG_RGBA_SMALL"],
-      maxSpriteSizeBase: 64,
-      maxSpriteSizeExpansion: 96,
-      maxAtlasSizeBase: { w: 256, h: 256 },
-      maxAtlasSizeExpansion: { w: 512, h: 256 },
-      perFrameTilesBase: 8,
-      perFrameTilesExpansion: 12,
-      requireTileMultiple: 8,
-    },
-  },
-  devMode: (typeof __DEV__ !== 'undefined') ? __DEV__ : false,
-};
+    devMode: (typeof __DEV__ !== 'undefined') ? __DEV__ : false,
+  };
+  try {
+    const json = await loadJSON("build/assets/config/engine-config.json");
+    // shallow-merge with fallback to ensure required keys exist
+    config = { ...fallback, ...json };
+    config.renderer = { ...fallback.renderer, ...(json?.renderer || {}) };
+    config.budgets = { ...fallback.budgets, ...(json?.budgets || {}) };
+    config.budgets.audio = { ...fallback.budgets.audio, ...(json?.budgets?.audio || {}) };
+    config.budgets.particles = { ...fallback.budgets.particles, ...(json?.budgets?.particles || {}) };
+    config.budgets.ui = { ...fallback.budgets.ui, ...(json?.budgets?.ui || {}) };
+  } catch {
+    config = fallback;
+  }
+  return config;
+}
 
 // EngineLimits removed; prefer reading from config directly
 
-export function tmemBytesForTexture({ width, height, bpp, paletteBytes = 0 }) {
+export function textureMemoryBytesForTexture({ width, height, bpp, paletteBytes = 0 }) {
   return (width * height * bpp) / 8 + paletteBytes;
 }
 
-export function fitsInTMEM({ width, height, bpp, paletteBytes = 0 }) {
-  return tmemBytesForTexture({ width, height, bpp, paletteBytes }) <= (config.budgets.tmemBytes || 0);
+export function fitsInTextureMemory({ width, height, bpp, paletteBytes = 0 }) {
+  return textureMemoryBytesForTexture({ width, height, bpp, paletteBytes }) <= (config?.budgets?.textureMemoryBytes || 0);
 }
 
 export function getInternalResolution() {
-  const w = config.expansionPak ? config.renderer.internalWidthExpansion : config.renderer.internalWidthBase;
-  const h = config.expansionPak ? config.renderer.internalHeightExpansion : config.renderer.internalHeightBase;
+  const w = config?.renderer?.internalWidth || 640;
+  const h = config?.renderer?.internalHeight || 480;
   return { width: w, height: h };
 }
 
 export function uiSpriteWithinBudget({ width, height, format, paletteBytes = 0 }) {
   const ui = config.budgets.ui;
-  const maxSprite = config.expansionPak ? ui.maxSpriteSizeExpansion : ui.maxSpriteSizeBase;
+  const maxSprite = ui.maxSpriteSize;
   if (width > maxSprite || height > maxSprite) return false;
   if (!ui.allowedFormats?.includes(format)) return false;
   if (format === 'PNG_RGBA_SMALL') {
     if (width > 32 || height > 32) return false;
-    return fitsInTMEM({ width, height, bpp: 32, paletteBytes: 0 });
+    return fitsInTextureMemory({ width, height, bpp: 32, paletteBytes: 0 });
   }
   const bpp = 8;
-  return fitsInTMEM({ width, height, bpp, paletteBytes });
+  return fitsInTextureMemory({ width, height, bpp, paletteBytes });
 }
 
 export function uiAtlasWithinBudget({ width, height }) {
   const ui = config.budgets.ui;
-  const limit = config.expansionPak ? ui.maxAtlasSizeExpansion : ui.maxAtlasSizeBase;
+  const limit = ui.maxAtlasSize;
   return width <= (limit?.w || 0) && height <= (limit?.h || 0);
 }
 
@@ -332,6 +332,7 @@ function animate() {
 }
 
 export async function start() {
+  await loadEngineConfig();
   frameIntervalMs = 1000 / (config.targetFPS || 60);
   const { width, height } = getInternalResolution();
   const canvas = document.getElementById("app-canvas");

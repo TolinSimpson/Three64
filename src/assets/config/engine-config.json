@@ -1,0 +1,31 @@
+{
+  "targetFPS": 30,
+  "renderer": {
+    "internalWidth": 640,
+    "internalHeight": 480,
+    "defaultDoubleSided": false
+  },
+  "budgets": {
+    "trisPerFrame": 5333,
+    "ramBytes": 8388608,
+    "textureMemoryBytes": 4096,
+    "maxBonesPerMesh": 40,
+    "audio": {
+      "maxVoices": 24,
+      "maxRateHz": 44100
+    },
+    "particles": {
+      "maxActive": 512,
+      "trisPerQuad": 2
+    },
+    "ui": {
+      "allowedFormats": ["PNG8", "PNG_RGBA_SMALL"],
+      "maxSpriteSize": 96,
+      "maxAtlasSize": { "w": 512, "h": 256 },
+      "perFrameTiles": 12,
+      "requireTileMultiple": 8
+    }
+  },
+  "devMode": false
+}
+
