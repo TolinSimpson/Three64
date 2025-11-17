@@ -27,3 +27,6 @@ events.emit('CustomEvent', { foo: 123 });
 - Components like `Raycaster` and `Volume` emit events you can subscribe to with `onEvent`.
 - Typical event names: `RaycastHit`, `RaycastMiss`, `RaycastFilteredHit`, `VolumeEnter`, `VolumeExit`, `VolumeStay`.
 
+### Related
+- For configuring structured, data-driven reactions (add item, modify statistics, call component methods), see `runtime/event.js` (Actions).
+

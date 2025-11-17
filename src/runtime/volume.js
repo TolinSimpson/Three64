@@ -92,7 +92,6 @@ export class Volume extends Component {
     this._elapsed = 0;
 
     const candidates = this._collectCandidates();
-    const bus = this.game?.eventSystem;
     const events = opts.events || {};
     const includeRef = opts.includePayloadObjectRef === true;
     const insideNow = new Set();
@@ -110,14 +109,17 @@ export class Volume extends Component {
       const id = obj.uuid;
       if (isInside) {
         insideNow.add(id);
-        if (!this._inside.has(id) && events.onEnter && bus?.emit) {
-          bus.emit(String(events.onEnter), this._payload(obj, includeRef));
+        if (!this._inside.has(id) && events.onEnter) {
+          const payload = this._payload(obj, includeRef);
+          this._emitOrExecute(events.onEnter, payload);
         }
-        if (events.onStay && bus?.emit) {
-          bus.emit(String(events.onStay), this._payload(obj, includeRef));
+        if (events.onStay) {
+          const payload = this._payload(obj, includeRef);
+          this._emitOrExecute(events.onStay, payload);
         }
-      } else if (this._inside.has(id) && events.onExit && bus?.emit) {
-        bus.emit(String(events.onExit), this._payload(obj, includeRef));
+      } else if (this._inside.has(id) && events.onExit) {
+        const payload = this._payload(obj, includeRef);
+        this._emitOrExecute(events.onExit, payload);
       }
     }
 
@@ -126,8 +128,8 @@ export class Volume extends Component {
       for (const prevId of this._inside) {
         if (!insideNow.has(prevId)) {
           const obj = this.game.rendererCore.scene.getObjectByProperty("uuid", prevId);
-          if (obj && this._passesFilters(obj, opts.filters || {}) && this.game?.eventSystem?.emit) {
-            this.game.eventSystem.emit(String(events.onExit), this._payload(obj, includeRef));
+          if (obj && this._passesFilters(obj, opts.filters || {})) {
+            this._emitOrExecute(events.onExit, this._payload(obj, includeRef));
           }
         }
       }
@@ -135,6 +137,17 @@ export class Volume extends Component {
 
     // Update inside set
     this._inside = insideNow;
+  }
+
+  async _emitOrExecute(config, payload) {
+    try {
+      if (typeof config === "string") {
+        this.game?.eventSystem?.emit(String(config), payload);
+      } else if (config) {
+        const mod = await import("./event.js");
+        await mod.executeActions({ game: this.game, object: this.object, component: this }, config, payload);
+      }
+    } catch {}
   }
 
   _payload(object, includeRef) {

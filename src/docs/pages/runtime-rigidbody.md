@@ -40,6 +40,19 @@
   ```
 - Volume events are delegated to the embedded `Volume` component when `useVolume` or any volume event is configured.
 
+### Actions support
+- `events.onCollision` can be either a string (emitted via `EventSystem`) or an action object/array executed by `runtime/event.js`.
+  Example:
+  ```json
+  {
+    "events": {
+      "onCollision": [
+        { "type": "ModifyStatistic", "params": { "name": "health", "op": "add", "value": -10, "target": "player" } }
+      ]
+    }
+  }
+  ```
+
 ## Examples
 ### GLTF userData
 ```json

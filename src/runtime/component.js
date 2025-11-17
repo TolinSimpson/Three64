@@ -15,6 +15,26 @@ export class Component {
   Update(dt) {}
   Dispose() {}
 
+  // Event execution helper: executes configured actions in options.events[name]
+  async onEvent(name, payload) {
+    const cfg = this?.options?.events ? this.options.events[name] : undefined;
+    if (!cfg) return;
+    if (typeof cfg === "string") {
+      try { this.game?.eventSystem?.emit(String(cfg), payload); } catch {}
+      return;
+    }
+    // Lazy import to avoid cycles
+    try {
+      const mod = await import("./event.js");
+      await mod.executeActions({ game: this.game, object: this.object, component: this }, cfg, payload);
+    } catch {}
+  }
+
+  // Alias for clarity in components
+  async triggerConfiguredEvent(key, payload) {
+    return this.onEvent(key, payload);
+  }
+
   // Serialization
   Serialize() {
     const typeName = this.propName || this.constructor?.name || "Component";

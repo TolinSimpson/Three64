@@ -1,0 +1,9 @@
+{
+  "actions": [
+    { "id": "AddItem", "label": "Add Item", "params": ["target", "item"] },
+    { "id": "ModifyStatistic", "label": "Modify Statistic", "params": ["name", "op", "value", "duration", "easing", "keepRatio", "target"] },
+    { "id": "SendComponentMessage", "label": "Send Component Message", "params": ["target", "component", "method", "args", "objectName"] }
+  ]
+}
+
+

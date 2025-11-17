@@ -10,7 +10,10 @@
     - mode `property`: uses scene property/groups by name (see scene-conventions)
     - mode `names`: matches exact object names
   - Filters: `nameEquals`, `nameIncludes`, `hasComponent`, `userDataMatch`
-  - Events: `events.onEnter`, `events.onExit`, `events.onStay`
+  - Events: `events.onEnter`, `events.onExit`, `events.onStay` (string or actions)
+
+### Actions support
+Each event can be a string (emitted via `EventSystem`) or an action object/array executed by `runtime/event.js`.
 
 ## Example (GLTF userData)
 ```json

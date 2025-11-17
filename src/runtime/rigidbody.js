@@ -2,6 +2,7 @@
 import { Vector3, Quaternion } from "three";
 import { Component, ComponentRegistry } from "./component.js";
 import { Volume } from "./volume.js";
+import { executeActions } from "./event.js";
 
 // Rigidbody component: wraps Ammo rigid body creation and simple collision/volume events.
 export class Rigidbody extends Component {
@@ -120,8 +121,10 @@ export class Rigidbody extends Component {
 
 	FixedUpdate(dt) {
 		// Minimal collision event via sweep test against static world colliders.
-		const evn = (this.onCollisionEvent || "").toString();
-		if (!evn) {
+		const cfg = this.onCollisionEvent;
+		const isString = typeof cfg === "string" && cfg.length > 0;
+		const hasActions = !!cfg && !isString;
+		if (!isString && !hasActions) {
 			// Still advance fallback position storage
 			try { this._rbLastPos.copy(this.object.getWorldPosition(new Vector3())); } catch {}
 			return;
@@ -135,7 +138,7 @@ export class Rigidbody extends Component {
 			const dir = delta.clone().multiplyScalar(1 / dist);
 			const margin = 0.01;
 			const hit = this.game?.physics?.raycast ? this.game.physics.raycast(prev, dir, dist + margin) : null;
-			if (hit && this.game?.eventSystem?.emit) {
+			if (hit) {
 				const payload = {
 					point: hit.point || null,
 					normal: hit.face?.normal || null,
@@ -143,7 +146,11 @@ export class Rigidbody extends Component {
 					targetName: hit.object?.name || "",
 					sourceObject: this.object,
 				};
-				this.game.eventSystem.emit(String(evn), payload);
+				if (isString) {
+					try { this.game?.eventSystem?.emit(String(cfg), payload); } catch {}
+				} else {
+					try { executeActions({ game: this.game, object: this.object, component: this }, cfg, payload); } catch {}
+				}
 			}
 		}
 		this._rbLastPos.copy(cur);
