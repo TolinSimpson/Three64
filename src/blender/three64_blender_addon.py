@@ -32,6 +32,10 @@ _cached_param_types: Dict[str, Dict[str, str]] = {}
 _cached_param_enums: Dict[str, Dict[str, List[str]]] = {}
 _dyn_enum_pids: List[str] = []
 
+# Cached actions manifest (for Events UI)
+_cached_actions: List[Dict[str, Any]] = []
+_cached_actions_path: str = ""
+
 def _axis_name_to_index(name: str) -> int:
 	try:
 		l = name.lower()
@@ -241,6 +245,62 @@ def _abspath(path: str) -> str:
 	# Resolve Blender-style paths (supports // relative to current .blend)
 	return bpy.path.abspath(path or "")
 
+
+def _read_actions_manifest(path_abs: str) -> List[Dict[str, Any]]:
+	try:
+		if not path_abs or not os.path.isfile(path_abs):
+			return []
+		with open(path_abs, "r", encoding="utf-8") as f:
+			data = json.load(f)
+		acts = data.get("actions") if isinstance(data, dict) else None
+		if isinstance(acts, list):
+			out: List[Dict[str, Any]] = []
+			for a in acts:
+				if not isinstance(a, dict):
+					continue
+				aid = a.get("id")
+				if not isinstance(aid, str) or not aid.strip():
+					continue
+				lbl = a.get("label") if isinstance(a.get("label"), str) else aid
+				params = a.get("params") if isinstance(a.get("params"), list) else []
+				out.append({"id": str(aid), "label": str(lbl), "params": [str(p) for p in params]})
+			return out
+	except Exception:
+		return []
+	return []
+
+
+def _ensure_actions_cache(context: "bpy.types.Context") -> List[Dict[str, Any]]:
+	global _cached_actions, _cached_actions_path
+	prefs = _get_preferences()
+	path = _abspath(getattr(prefs, "action_manifest_path", "//config/action-manifest.json")) if prefs else ""
+	if path != _cached_actions_path:
+		_cached_actions_path = path
+		_cached_actions = _read_actions_manifest(path)
+		if not _cached_actions:
+			_cached_actions = [
+				{"id": "AddItem", "label": "Add Item", "params": ["target", "item"]},
+				{"id": "ModifyStatistic", "label": "Modify Statistic", "params": ["name", "op", "value", "duration", "easing", "keepRatio", "target"]},
+				{"id": "SendComponentMessage", "label": "Send Component Message", "params": ["target", "component", "method", "args", "objectName"]},
+			]
+	return _cached_actions
+
+
+def _enum_actions(self, context: "bpy.types.Context"):
+	try:
+		acts = _ensure_actions_cache(context)
+		if not acts:
+			return [("AddItem", "AddItem", ""), ("ModifyStatistic", "ModifyStatistic", ""), ("SendComponentMessage", "SendComponentMessage", "")]
+		items = []
+		for a in acts:
+			aid = str(a.get("id", ""))
+			lbl = str(a.get("label", aid))
+			if not aid:
+				continue
+			items.append((aid, lbl, ""))
+		return items or [("AddItem", "AddItem", "")]
+	except Exception:
+		return [("AddItem", "AddItem", "")]
 
 def _get_preferences() -> "Three64AddonPreferences | None":
 	addon_key = __name__
@@ -498,6 +558,20 @@ class THREE64_OT_reload_component_data(bpy.types.Operator):
 		self.report({"INFO"}, "Three64 components reloaded")
 		return {"FINISHED"}
 
+class THREE64_OT_reload_action_manifest(bpy.types.Operator):
+	bl_idname = "three64.reload_action_manifest"
+	bl_label = "Reload Actions Manifest"
+	bl_description = "Reload the actions manifest used by the Events authoring UI"
+	bl_options = {"REGISTER"}
+
+	def execute(self, context: "bpy.types.Context"):
+		global _cached_actions, _cached_actions_path
+		_cached_actions = []
+		_cached_actions_path = ""
+		_ensure_actions_cache(context)
+		self.report({"INFO"}, "Actions manifest reloaded")
+		return {"FINISHED"}
+
 
 class Three64AddonPreferences(bpy.types.AddonPreferences):
 	bl_idname = __name__
@@ -516,6 +590,10 @@ class Three64AddonPreferences(bpy.types.AddonPreferences):
 		col.prop(self, "component_data_dir")
 		row = col.row(align=True)
 		row.operator(THREE64_OT_reload_component_data.bl_idname, icon="FILE_REFRESH")
+		col.separator()
+		col.prop(self, "action_manifest_path")
+		row2 = col.row(align=True)
+		row2.operator("three64.reload_action_manifest", icon="FILE_REFRESH")
 
 
 def _draw_into_custom_props(self, context: "bpy.types.Context"):
@@ -650,6 +728,56 @@ class OBJECT_PT_three64_component(bpy.types.Panel):
 			row3 = layout.row(align=True)
 			row3.prop(obj, "three64_component", text="Component")
 			row3.operator("three64.add_selected_component", text="", icon="ADD")
+
+			# Events authoring
+			layout.separator()
+			boxE = layout.box()
+			boxE.label(text="Events (Actions)", icon="EVENT_S")
+			rowE1 = boxE.row(align=True)
+			rowE1.prop(obj, "three64_event_key", text="events.<key>")
+			rowE1.prop(obj, "three64_event_string_value", text="emit")
+			rowE1.operator("three64.event_set_string", text="Save", icon="CHECKMARK")
+			rowE2 = boxE.row(align=True)
+			rowE2.prop(obj, "three64_action_id", text="Action")
+			rowE2.prop(obj, "three64_action_params_json", text="params (JSON)")
+			rowE2.operator("three64.event_add_action", text="Add Action", icon="ADD")
+			# Existing events.* keys
+			try:
+				ev_keys = [k for k in obj.keys() if isinstance(k, str) and k.startswith("events.")]
+				for ek in sorted(ev_keys):
+					v = obj.get(ek)
+					inner = boxE.box()
+					h = inner.row(align=True)
+					h.label(text=ek)
+					if isinstance(v, str):
+						h2 = inner.row(align=True)
+						h2.label(text=f'emit="{v}"')
+					elif isinstance(v, list):
+						if not v:
+							h2 = inner.row(align=True)
+							h2.label(text="(no actions)")
+						else:
+							for i, a in enumerate(v):
+								aid = ""
+								params_str = "{}"
+								try:
+									if isinstance(a, dict):
+										aid = str(a.get("type", ""))
+										p = a.get("params", {})
+										params_str = json.dumps(p) if isinstance(p, (dict, list)) else str(p)
+								except Exception:
+									pass
+								rowA = inner.row(align=True)
+								rowA.label(text=f"{i}: {aid}")
+								rowA.label(text=params_str)
+								op = rowA.operator("three64.event_remove_action", text="", icon="X")
+								op.event_key = ek
+								op.index = int(i)
+					else:
+						h2 = inner.row(align=True)
+						h2.label(text=f"(unsupported type: {type(v).__name__})")
+			except Exception:
+				pass
 
 			# Archetypes & Instancing quick authoring
 			layout.separator()
@@ -821,6 +949,121 @@ class THREE64_OT_add_selected_component(bpy.types.Operator):
 		identifier = getattr(obj, "three64_component", None)
 		if not isinstance(identifier, str) or not identifier or identifier == "NONE":
 			self.report({"WARNING"}, "No component selected")
+			return {"CANCELLED"}
+
+class THREE64_OT_event_set_string(bpy.types.Operator):
+	bl_idname = "three64.event_set_string"
+	bl_label = "Set Event String"
+	bl_description = "Set events.<key> to a string event name"
+	bl_options = {"REGISTER", "UNDO"}
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def execute(self, context: "bpy.types.Context"):
+		try:
+			obj = context.object
+			key = str(getattr(obj, "three64_event_key", "")).strip()
+			emit = str(getattr(obj, "three64_event_string_value", "")).strip()
+			if not key:
+				self.report({"WARNING"}, "events.<key> is empty")
+				return {"CANCELLED"}
+			prop = f"events.{key}"
+			obj[prop] = emit
+			try:
+				ui = obj.id_properties_ui(prop)
+				ui.update(description="Three64 event string to emit")
+			except Exception:
+				pass
+			self.report({"INFO"}, f'Set {prop} = "{emit}"')
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to set event string")
+			return {"CANCELLED"}
+
+class THREE64_OT_event_add_action(bpy.types.Operator):
+	bl_idname = "three64.event_add_action"
+	bl_label = "Add Action to Event"
+	bl_description = "Append an action object into events.<key> action array"
+	bl_options = {"REGISTER", "UNDO"}
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def execute(self, context: "bpy.types.Context"):
+		try:
+			obj = context.object
+			key = str(getattr(obj, "three64_event_key", "")).strip()
+			action_id = str(getattr(obj, "three64_action_id", "")).strip()
+			params_raw = getattr(obj, "three64_action_params_json", "") or ""
+			if not key:
+				self.report({"WARNING"}, "events.<key> is empty")
+				return {"CANCELLED"}
+			if not action_id:
+				self.report({"WARNING"}, "Select an action")
+				return {"CANCELLED"}
+			params = {}
+			if isinstance(params_raw, str) and params_raw.strip():
+				try:
+					parsed = json.loads(params_raw)
+					if isinstance(parsed, (dict, list)):
+						params = parsed
+				except Exception:
+					params = {"value": params_raw}
+			prop = f"events.{key}"
+			cur = obj.get(prop, None)
+			if isinstance(cur, str) or cur is None:
+				cur_list = []
+			elif isinstance(cur, list):
+				cur_list = list(cur)
+			else:
+				cur_list = []
+			cur_list.append({"type": action_id, "params": params})
+			obj[prop] = cur_list
+			try:
+				ui = obj.id_properties_ui(prop)
+				ui.update(description="Three64 actions array for event")
+			except Exception:
+				pass
+			self.report({"INFO"}, f"Added action '{action_id}' to {prop}")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to add action")
+			return {"CANCELLED"}
+
+class THREE64_OT_event_remove_action(bpy.types.Operator):
+	bl_idname = "three64.event_remove_action"
+	bl_label = "Remove Action"
+	bl_description = "Remove an action by index from events.<key>"
+	bl_options = {"REGISTER", "UNDO"}
+
+	event_key: bpy.props.StringProperty(name="events key", default="")
+	index: bpy.props.IntProperty(name="index", default=-1, min=-1)
+
+	@classmethod
+	def poll(cls, context: "bpy.types.Context"):
+		return getattr(context, "object", None) is not None
+
+	def execute(self, context: "bpy.types.Context"):
+		try:
+			obj = context.object
+			prop = str(self.event_key or "")
+			idx = int(self.index)
+			if not prop.startswith("events."):
+				self.report({"WARNING"}, "Invalid events key")
+				return {"CANCELLED"}
+			cur = obj.get(prop, None)
+			if not isinstance(cur, list) or idx < 0 or idx >= len(cur):
+				self.report({"WARNING"}, "No action at index")
+				return {"CANCELLED"}
+			cur.pop(idx)
+			obj[prop] = cur
+			self.report({"INFO"}, f"Removed action #{idx} from {prop}")
+			return {"FINISHED"}
+		except Exception:
+			self.report({"ERROR"}, "Failed to remove action")
 			return {"CANCELLED"}
 
 		# Append: add a new numbered component key and add param properties with the same index, without overwriting existing keys.
@@ -1707,6 +1950,7 @@ class THREE64_OT_insert_inst_tag(bpy.types.Operator):
 
 classes = (
 	THREE64_OT_reload_component_data,
+	THREE64_OT_reload_action_manifest,
 	Three64AddonPreferences,
 	OBJECT_PT_three64_component,
 	THREE64_OT_open_addon_preferences,
@@ -1722,6 +1966,9 @@ classes = (
 	THREE64_OT_set_inst_key,
 	THREE64_OT_insert_inst_tag,
 	THREE64_OT_add_joint,
+	THREE64_OT_event_set_string,
+	THREE64_OT_event_add_action,
+	THREE64_OT_event_remove_action,
 )
 def register():
 	for cls in classes:
@@ -1755,6 +2002,39 @@ def register():
 	# Also draw within the default Custom Properties panel for convenience
 	try:
 		bpy.types.OBJECT_PT_custom_props.append(_draw_into_custom_props)
+	except Exception:
+		pass
+	# Events authoring helper properties
+	try:
+		bpy.types.Object.three64_event_key = bpy.props.StringProperty(
+			name="Event Key",
+			description="events.<key> (e.g., onCollision, onEnter, onExit, onStay)",
+			default="onCollision",
+		)
+	except Exception:
+		pass
+	try:
+		bpy.types.Object.three64_event_string_value = bpy.props.StringProperty(
+			name="Emit Name",
+			description="If set, events.<key> will be a string emitted at runtime",
+			default="",
+		)
+	except Exception:
+		pass
+	try:
+		bpy.types.Object.three64_action_id = bpy.props.EnumProperty(
+			name="Action",
+			description="Action type to append to events.<key> actions array",
+			items=_enum_actions,
+		)
+	except Exception:
+		pass
+	try:
+		bpy.types.Object.three64_action_params_json = bpy.props.StringProperty(
+			name="Params (JSON)",
+			description="JSON object of parameters for the selected action",
+			default="{}",
+		)
 	except Exception:
 		pass
 	# NavMesh JSON exporters and scene props removed in favor of GLTF-authored navmesh
@@ -1794,6 +2074,12 @@ def unregister():
 	if hasattr(bpy.types.Object, "three64_component"):
 		try:
 			del bpy.types.Object.three64_component
+		except Exception:
+			pass
+	# Remove events helper properties
+	for pname in ("three64_event_key", "three64_event_string_value", "three64_action_id", "three64_action_params_json"):
+		try:
+			delattr(bpy.types.Object, pname)
 		except Exception:
 			pass
 	# Remove dynamic enum props
