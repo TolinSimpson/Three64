@@ -23,6 +23,43 @@
     <canvas id="app-canvas"></canvas>
   </div>
 
+  <div id="fs-prompt" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0d0f1acc;color:#fff;z-index:10000;font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;text-align:center;">
+    <div style="padding:24px 28px;background:#111a;backdrop-filter:blur(4px);border:1px solid #2a2f4a;border-radius:8px;max-width:520px;">
+      <div style="font-size:20px;margin-bottom:8px;">Press any key to enter fullscreen</div>
+      <button id="fs-prompt-btn" style="padding:10px 14px;background:#2d6cdf;color:#fff;border:0;border-radius:6px;cursor:pointer;">Continue</button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var promptEl = document.getElementById('fs-prompt');
+      if (!promptEl) return;
+      var requested = false;
+      function tryFullscreen() {
+        if (requested) return;
+        requested = true;
+        (async function () {
+          try {
+            if (!document.fullscreenElement) {
+              var target = document.documentElement;
+              if (target && target.requestFullscreen) {
+                await target.requestFullscreen();
+              }
+            }
+          } catch (e) { /* ignore */ }
+          try { promptEl.remove(); } catch {}
+          window.removeEventListener('keydown', onAny, true);
+          window.removeEventListener('mousedown', onAny, true);
+          window.removeEventListener('touchstart', onAny, { passive: true });
+        })();
+      }
+      function onAny() { tryFullscreen(); }
+      window.addEventListener('keydown', onAny, true);
+      window.addEventListener('mousedown', onAny, true);
+      window.addEventListener('touchstart', onAny, { passive: true });
+      var btn = document.getElementById('fs-prompt-btn');
+      if (btn) btn.addEventListener('click', tryFullscreen);
+    })();
+  </script>
   <script src="./build/runtime.js"></script>
 </body>
 </html>

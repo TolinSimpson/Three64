@@ -36,10 +36,32 @@ export class SettingsMenu {
     const vol = root.querySelector('[data-setting="audio.masterVolume"]');
     if (vol) vol.value = String(this.settings?.audio?.masterVolume ?? 1);
     // Graphics
+    // Ensure fullscreen toggle exists in the Graphics tab
+    const gfxSec = root.querySelector('[data-tab="graphics"]');
+    if (gfxSec && !gfxSec.querySelector('[data-setting="graphics.fullscreen"]')) {
+      const label = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.setAttribute('data-setting', 'graphics.fullscreen');
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' Fullscreen'));
+      const firstLabel = gfxSec.querySelector('label');
+      if (firstLabel && firstLabel.parentElement === gfxSec) {
+        gfxSec.insertBefore(label, firstLabel);
+      } else {
+        gfxSec.appendChild(label);
+      }
+    }
     const dbl = root.querySelector('[data-setting="graphics.doubleSided"]');
     if (dbl) dbl.checked = !!(this.settings?.graphics?.doubleSided ?? config.renderer.defaultDoubleSided);
     const fps = root.querySelector('[data-setting="graphics.targetFPS"]');
     if (fps) fps.value = String(this.settings?.graphics?.targetFPS ?? config.targetFPS);
+    const fsEl = root.querySelector('[data-setting="graphics.fullscreen"]');
+    if (fsEl) {
+      const cur = !!document.fullscreenElement;
+      const saved = !!(this.settings?.graphics?.fullscreen);
+      fsEl.checked = cur || saved;
+    }
     // Keybinds: render rows
     this._renderKeybinds();
     // Show "Return to Main Menu" only when main menu is not visible
@@ -66,6 +88,16 @@ export class SettingsMenu {
         else this.show();
       }
     });
+    // Keep UI in sync with browser fullscreen state
+    document.addEventListener('fullscreenchange', () => {
+      try {
+        const fs = !!document.fullscreenElement;
+        if (!this.settings) this.settings = {};
+        if (!this.settings.graphics) this.settings.graphics = {};
+        this.settings.graphics.fullscreen = fs;
+      } catch {}
+      this._populateForm();
+    });
     // Tab switching
     const root = this._layer();
     if (root) {
@@ -87,7 +119,8 @@ export class SettingsMenu {
     };
     const graphics = {
       doubleSided: !!(get('[data-setting="graphics.doubleSided"]') || {}).checked,
-      targetFPS: Number((get('[data-setting="graphics.targetFPS"]') || {}).value || config.targetFPS)
+      targetFPS: Number((get('[data-setting="graphics.targetFPS"]') || {}).value || config.targetFPS),
+      fullscreen: !!(get('[data-setting="graphics.fullscreen"]') || {}).checked
     };
     const keybinds = this.settings?.keybinds || {};
     this.settings = { audio, graphics, keybinds };
@@ -110,6 +143,8 @@ export class SettingsMenu {
         canvas.width = width;
         canvas.height = height;
       }
+      // Apply fullscreen preference (requires user gesture; this runs on Save click)
+      this._applyFullscreenSetting(!!this.settings.graphics.fullscreen);
     }
     // Apply audio (future: route to AudioSystem master gain)
     // Keybinds are saved for future input remapping consumers.
@@ -156,6 +191,17 @@ export class SettingsMenu {
         this._beginRebind(action);
       });
     });
+  }
+
+  _applyFullscreenSetting(desired) {
+    const want = !!desired;
+    const isFs = !!document.fullscreenElement;
+    if (want && !isFs) {
+      const target = document.documentElement || document.body;
+      try { target.requestFullscreen?.(); } catch {}
+    } else if (!want && isFs) {
+      try { document.exitFullscreen?.(); } catch {}
+    }
   }
 
   _beginRebind(action) {
