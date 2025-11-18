@@ -1,11 +1,30 @@
 <div class="menu-wrap" data-interactive data-ui-tiles="2">
   <div class="menu-card">
     <h1 class="menu-title">Three64</h1>
-    <button class="menu-btn" data-emit="menu:start">Start</button>
-    <button class="menu-btn" data-emit="menu:settings">Settings</button>
-    <a class="menu-link" href="docs/help.html" target="_blank" rel="noopener">Help</a>
+    <div id="menu-main-panel">
+      <button class="menu-btn" data-emit="menu:start">Start Game</button>
+      <button class="menu-btn" data-emit="menu:multiplayer">Multiplayer</button>
+      <button class="menu-btn" data-emit="menu:settings">Settings</button>
+      <a class="menu-link" href="docs/help.html" target="_blank" rel="noopener">Help</a>
+    </div>
+
+    <!-- Multiplayer Sub-Panel -->
+    <div id="menu-net-panel" style="display:none;">
+      <h2 style="margin:0 0 16px;font-size:18px;color:#aab">Multiplayer</h2>
+      
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:12px;margin-bottom:4px;color:#889;">LAN Server URL</label>
+        <input type="text" id="net-lan-url" value="ws://localhost:8080" style="width:100%;background:#111;border:1px solid #445;color:#eee;padding:6px;border-radius:4px;" />
+        <button class="menu-btn" data-emit="net:connect-lan" style="margin-top:8px;">Connect LAN</button>
+      </div>
+
+      <div style="margin-bottom:16px;padding-top:16px;border-top:1px solid #334;">
+        <label style="display:block;font-size:12px;margin-bottom:4px;color:#889;">Multisynq (Internet)</label>
+        <button class="menu-btn" data-emit="net:connect-multisynq">Connect via Multisynq</button>
+      </div>
+
+      <button class="menu-btn" data-emit="menu:net-back" style="background:#333;">Back</button>
+    </div>
   </div>
   <div class="menu-hint">Tip: Press Esc in-game to open Settings</div>
 </div>
-
-

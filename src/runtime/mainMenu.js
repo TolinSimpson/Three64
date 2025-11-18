@@ -1,6 +1,8 @@
 'use strict';
 import { loadJSON } from './io.js';
 import { SceneLoader } from './assetLoader.js';
+import { NetworkSystem } from './network.js';
+import { MultisynqNetworkSystem } from './multisynq.js';
 
 export class MainMenu {
   constructor(game, settingsMenu) {
@@ -27,10 +29,49 @@ export class MainMenu {
       this.hide();
       this.settingsMenu?.show();
     }));
-    // External request to show menu (e.g., from Settings "Return to Main Menu")
     this._unsubs.push(this.game.ui.on('menu:show', () => {
       this.show();
     }));
+
+    // Multiplayer UI toggles
+    this._unsubs.push(this.game.ui.on('menu:multiplayer', () => {
+      this._toggleNetPanel(true);
+    }));
+    this._unsubs.push(this.game.ui.on('menu:net-back', () => {
+      this._toggleNetPanel(false);
+    }));
+
+    // Network connect actions
+    this._unsubs.push(this.game.ui.on('net:connect-lan', () => {
+      const urlInput = document.getElementById('net-lan-url');
+      const url = urlInput ? urlInput.value : undefined;
+      // Ensure we are using the standard NetworkSystem
+      if (!(this.game.network instanceof NetworkSystem)) {
+        this.game.network = new NetworkSystem(this.game);
+      }
+      this.game.network.connect(url);
+      this.startDefaultScene();
+    }));
+
+    this._unsubs.push(this.game.ui.on('net:connect-multisynq', () => {
+      // Reload to force multisynq mode via URL params if not already
+      // Or swap instance if we support it
+      if (!(this.game.network instanceof MultisynqNetworkSystem)) {
+        // Ideally we reload with ?multisynq=true, but let's try swapping dynamically
+        this.game.network = new MultisynqNetworkSystem(this.game);
+      }
+      this.game.network.connect(); // will grab params or default
+      this.startDefaultScene();
+    }));
+  }
+
+  _toggleNetPanel(showNet) {
+    const main = document.getElementById('menu-main-panel');
+    const net = document.getElementById('menu-net-panel');
+    if (main && net) {
+      main.style.display = showNet ? 'none' : 'block';
+      net.style.display = showNet ? 'block' : 'none';
+    }
   }
 
   async startDefaultScene() {
@@ -71,6 +112,8 @@ export class MainMenu {
 
   show() {
     this.game.ui.setLayerVisible('menu', true);
+    // Reset to main panel
+    this._toggleNetPanel(false);
   }
   hide() {
     this.game.ui.setLayerVisible('menu', false);
@@ -78,5 +121,3 @@ export class MainMenu {
 }
 
 export default MainMenu;
-
-
