@@ -4,6 +4,7 @@ export class UISystem {
     this.game = game;
     this.root = null;
     this.layers = new Map();
+    this.layerMeta = new Map();
     this._eventTarget = (typeof window !== 'undefined' && window.EventTarget) ? new EventTarget() : null;
     this._stylesLoaded = new Set();
     this._lastUITiles = 0;
@@ -44,9 +45,27 @@ export class UISystem {
     el.style.position = 'absolute';
     el.style.inset = '0';
     el.style.pointerEvents = 'none';
-    el.style.zIndex = String(zIndexBase);
+    const meta = this.layerMeta.get(key) || { zIndex: zIndexBase, visible: true };
+    el.style.zIndex = String(meta.zIndex ?? zIndexBase);
+    el.style.display = meta.visible === false ? 'none' : 'block';
     this.root.appendChild(el);
     this.layers.set(key, el);
+    if (!this.layerMeta.has(key)) this.layerMeta.set(key, { zIndex: zIndexBase, visible: true });
+    return el;
+  }
+
+  configureLayer(name, options) {
+    const key = String(name);
+    const el = this._ensureLayer(key);
+    const meta = this.layerMeta.get(key) || { zIndex: Number(el.style.zIndex) || 500, visible: el.style.display !== 'none' };
+    const next = { ...meta };
+    if (options && typeof options === 'object') {
+      if (options.zIndex != null && Number.isFinite(Number(options.zIndex))) next.zIndex = Number(options.zIndex);
+      if (options.visible != null) next.visible = !!options.visible;
+    }
+    el.style.zIndex = String(next.zIndex);
+    el.style.display = next.visible ? 'block' : 'none';
+    this.layerMeta.set(key, next);
     return el;
   }
 
@@ -61,9 +80,13 @@ export class UISystem {
     this._stylesLoaded.add(name);
   }
 
-  async loadPageIntoLayer(layerName, pageFileName) {
-    const topZ = (String(layerName) === 'debug') ? 1000 : undefined;
-    const layer = this._ensureLayer(layerName || 'hud', topZ ?? 500);
+  async loadPageIntoLayer(layerName, pageFileName, options) {
+    const wantName = String(layerName || 'hud');
+    const defaultZ = wantName === 'debug' ? 1000 : 500;
+    if (options && typeof options === 'object') {
+      this.configureLayer(wantName, { zIndex: options.zIndex ?? defaultZ, visible: options.visible });
+    }
+    const layer = this._ensureLayer(wantName, defaultZ);
     const url = new URL(`../build/assets/ui/${pageFileName}`, document.baseURI).href;
     let html = '';
     try {
@@ -74,6 +97,21 @@ export class UISystem {
       return;
     }
     layer.innerHTML = html;
+    // Optional: apply layer state from markup
+    try {
+      const rootEl = layer.querySelector('[data-layer]') || layer.firstElementChild;
+      if (rootEl) {
+        const zAttr = rootEl.getAttribute('data-layer-z');
+        const visAttr = rootEl.getAttribute('data-layer-visible');
+        const hasZ = zAttr != null && zAttr !== '';
+        const hasVis = visAttr != null && visAttr !== '';
+        if (hasZ || hasVis) {
+          const z = hasZ ? Number(zAttr) : undefined;
+          const vis = hasVis ? !(String(visAttr).toLowerCase() === 'false' || String(visAttr) === '0') : undefined;
+          this.configureLayer(wantName, { zIndex: Number.isFinite(z) ? z : undefined, visible: vis });
+        }
+      }
+    } catch {}
     // Enable interactions inside layer
     layer.style.pointerEvents = 'none';
     // Allow pointer events on elements that opt-in
@@ -133,7 +171,13 @@ export class UISystem {
 
   setLayerVisible(name, visible) {
     const layer = this.layers.get(String(name));
-    if (layer) layer.style.display = visible ? 'block' : 'none';
+    if (layer) {
+      layer.style.display = visible ? 'block' : 'none';
+      const key = String(name);
+      const meta = this.layerMeta.get(key) || { zIndex: Number(layer.style.zIndex) || 500, visible: true };
+      meta.visible = !!visible;
+      this.layerMeta.set(key, meta);
+    }
   }
 
   update(_dt) {
