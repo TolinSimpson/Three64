@@ -46,6 +46,12 @@ export class EventSystem {
       this.handlers[phase].push(fn);
     }
   }
+  off(phase, fn) {
+    if (this.handlers[phase] && typeof fn === 'function') {
+      const idx = this.handlers[phase].indexOf(fn);
+      if (idx >= 0) this.handlers[phase].splice(idx, 1);
+    }
+  }
   tick(app, frameDt) {
     const dt = Math.max(0, Number(frameDt) || 0);
     // Input phase (poll devices, queue actions)
@@ -66,9 +72,12 @@ export class EventSystem {
   }
   _emit(phase, dt, app) {
     const list = this.handlers[phase];
-    for (let i = 0; i < list.length; i++) {
+    if (!list) return;
+    // Iterate over a copy to allow handlers to unregister themselves during the loop without breaking iteration
+    const safeList = [...list];
+    for (let i = 0; i < safeList.length; i++) {
       try {
-        list[i](dt, app);
+        safeList[i](dt, app);
       } catch (e) {
         console.error(`EventSystem ${phase} handler error:`, e);
       }

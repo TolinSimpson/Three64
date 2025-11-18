@@ -213,9 +213,7 @@ export class RaycasterComponent extends Component {
     const scene = app?.rendererCore?.scene;
     ray.set(origin, direction.clone().normalize());
     ray.far = maxDistance;
-    const meshes = [];
-    scene.traverse((o) => { if (o && o.isMesh && o.visible !== false) meshes.push(o); });
-    const hits = ray.intersectObjects(meshes, true);
+    const hits = ray.intersectObjects(scene.children, true);
     return hits && hits.length ? this._mapHit(hits[0]) : null;
   }
 
@@ -225,9 +223,7 @@ export class RaycasterComponent extends Component {
     const scene = app?.rendererCore?.scene;
     ray.set(origin, direction.clone().normalize());
     ray.far = maxDistance;
-    const meshes = [];
-    scene.traverse((o) => { if (o && o.isMesh && o.visible !== false) meshes.push(o); });
-    const hits = ray.intersectObjects(meshes, true) || [];
+    const hits = ray.intersectObjects(scene.children, true) || [];
     return hits.map(h => this._mapHit(h));
   }
 

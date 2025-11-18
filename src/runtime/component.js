@@ -13,7 +13,20 @@ export class Component {
   static getParamDescriptions() { return []; }
   Initialize() {}
   Update(dt) {}
-  Dispose() {}
+  Dispose() {
+    // 1. Remove from Game Loop
+    try { this.game?.removeComponent?.(this); } catch {}
+
+    // 2. Remove from Object's component list
+    if (this.object && Array.isArray(this.object.__components)) {
+      const idx = this.object.__components.indexOf(this);
+      if (idx >= 0) this.object.__components.splice(idx, 1);
+    }
+
+    // 3. Clear references
+    this.game = null;
+    this.object = null;
+  }
 
   // Event execution helper: executes configured actions in options.events[name]
   async onEvent(name, payload) {

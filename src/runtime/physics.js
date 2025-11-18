@@ -724,6 +724,26 @@ export class PhysicsWorld {
     return body;
   }
 
+  removeRigidBody(body) {
+    if (!this.ammoReady || !this.dynamicsWorld || !body) return;
+    try {
+      this.dynamicsWorld.removeRigidBody(body);
+    } catch (e) {
+      console.warn("Failed to remove rigid body:", e);
+    }
+    // Cleanup references
+    const idx = this._rigidBodies.indexOf(body);
+    if (idx >= 0) this._rigidBodies.splice(idx, 1);
+
+    for (let i = this._entities.length - 1; i >= 0; i--) {
+      if (this._entities[i].body === body) {
+        const obj = this._entities[i].object;
+        if (obj) this._objectToBody.delete(obj);
+        this._entities.splice(i, 1);
+      }
+    }
+  }
+
 	_buildAmmoShapeForObject(object3D, shape, { mergeChildren, size, radius, height, center }) {
     const Ammo = this.Ammo;
     try {

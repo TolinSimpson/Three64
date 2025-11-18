@@ -228,6 +228,11 @@ export async function createApp() {
     toggles: Debug.toggles,
     componentInstances: [],
     pool: null,
+    removeComponent(c) {
+      if (!c) return;
+      const idx = this.componentInstances.indexOf(c);
+      if (idx >= 0) this.componentInstances.splice(idx, 1);
+    },
     onUpdate(fn) { if (typeof fn === "function") updaters.push(fn); },
     setWireframe(enabled) {
       rendererCore.scene.traverse((o) => {
@@ -270,9 +275,12 @@ export async function createApp() {
   // Phase dispatchers
   const runPhase = (method, dt) => {
     const list = app.componentInstances || [];
-    for (let i = 0; i < list.length; i++) {
-      const c = list[i];
-      if (!c) continue;
+    // Safe iteration: snapshot copy to avoid issues if components are removed during update
+    const safeList = [...list];
+    for (let i = 0; i < safeList.length; i++) {
+      const c = safeList[i];
+      // Skip if component was destroyed (game ref cleared)
+      if (!c || !c.game) continue;
       const fn = c[method];
       if (typeof fn === "function") {
         try { fn.call(c, dt, app); } catch (e) { console.error(`${method} error:`, e); }

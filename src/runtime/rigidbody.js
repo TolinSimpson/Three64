@@ -116,7 +116,15 @@ export class Rigidbody extends Component {
 	}
 
 	Dispose() {
-		// Volume is managed by component system lifetime; no explicit removal here.
+    if (this.body && this.game?.physics) {
+      this.game.physics.removeRigidBody(this.body);
+      this.body = null;
+    }
+    if (this._volumeComp) {
+      this._volumeComp.Dispose?.();
+      this._volumeComp = null;
+    }
+    super.Dispose();
 	}
 
 	FixedUpdate(dt) {
