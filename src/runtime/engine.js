@@ -26,6 +26,7 @@ import "./item.js";
 import "./inventory.js";
 import { MainMenu } from "./mainMenu.js";
 import { SettingsMenu } from "./settingsMenu.js";
+import { Input } from "./input.js";
 export let config = null;
 
 async function loadEngineConfig() {
@@ -227,11 +228,28 @@ export async function createApp() {
     errors: Debug.errors,
     toggles: Debug.toggles,
     componentInstances: [],
+    updateLists: { input: [], fixed: [], update: [], late: [] },
     pool: null,
+    addComponent(c) {
+      if (!c) return;
+      this.componentInstances.push(c);
+      if (typeof c.Input === 'function') this.updateLists.input.push(c);
+      if (typeof c.FixedUpdate === 'function') this.updateLists.fixed.push(c);
+      if (typeof c.Update === 'function') this.updateLists.update.push(c);
+      if (typeof c.LateUpdate === 'function') this.updateLists.late.push(c);
+    },
     removeComponent(c) {
       if (!c) return;
       const idx = this.componentInstances.indexOf(c);
       if (idx >= 0) this.componentInstances.splice(idx, 1);
+      const removeFrom = (list) => {
+        const i = list.indexOf(c);
+        if (i >= 0) list.splice(i, 1);
+      };
+      removeFrom(this.updateLists.input);
+      removeFrom(this.updateLists.fixed);
+      removeFrom(this.updateLists.update);
+      removeFrom(this.updateLists.late);
     },
     onUpdate(fn) { if (typeof fn === "function") updaters.push(fn); },
     setWireframe(enabled) {
@@ -250,7 +268,8 @@ export async function createApp() {
   initDebugOverlay(app);
 
   // Input + Events
-  app.eventSystem = new EventSystem({ fixedTimestep: 1 / 60, dom: canvas });
+  app.eventSystem = new EventSystem({ fixedTimestep: 1 / 60 });
+  app.input = new Input(canvas);
 
   // UI System
   app.ui = new UISystem(app);
@@ -264,19 +283,24 @@ export async function createApp() {
   try {
     const stat = new Statistic({ game: app, object: null, options: { name: 'health', min: 0, max: 100, current: 100, regenPerSec: 0 }, propName: "Statistic" });
     stat.Initialize?.();
-    app.componentInstances.push(stat);
+    app.addComponent(stat);
     const bar = new StatisticBar({ game: app, object: null, options: { name: 'health' }, propName: "StatisticBar" });
     await Promise.resolve(bar.Initialize?.());
-    app.componentInstances.push(bar);
+    app.addComponent(bar);
   } catch (e) {
     console.warn("Statistic initialization failed:", e);
   }
 
   // Phase dispatchers
   const runPhase = (method, dt) => {
-    const list = app.componentInstances || [];
-    // Safe iteration: snapshot copy to avoid issues if components are removed during update
-    const safeList = [...list];
+    let list;
+    if (method === 'Input') list = app.updateLists.input;
+    else if (method === 'FixedUpdate') list = app.updateLists.fixed;
+    else if (method === 'Update') list = app.updateLists.update;
+    else if (method === 'LateUpdate') list = app.updateLists.late;
+    else list = app.componentInstances;
+
+    const safeList = [...(list || [])];
     for (let i = 0; i < safeList.length; i++) {
       const c = safeList[i];
       // Skip if component was destroyed (game ref cleared)

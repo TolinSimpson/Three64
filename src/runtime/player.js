@@ -128,9 +128,9 @@ export class Player extends Component {
   }
 
   Input(dt, app) {
-    if (this._disabled || !app?.eventSystem || !this.controller) return;
+    if (this._disabled || !app?.input || !this.controller) return;
     // Look input from touch+gamepad
-    const { dx, dy } = app.eventSystem.consumeLookDelta();
+    const { dx, dy } = app.input.consumeLookDelta();
     const sx = Math.max(-1, Math.min(1, dx));
     const sy = Math.max(-1, Math.min(1, dy));
     let px = dx - sx;
@@ -145,8 +145,8 @@ export class Player extends Component {
     this.controller.setLookDelta(dYaw, dPitch);
 
     // Movement input
-    const s = app.eventSystem.inputState;
-    const jump = s.jump || app.eventSystem.consumeJumpQueued();
+    const s = app.input.inputState;
+    const jump = s.jump || app.input.consumeJumpQueued();
     this.controller.setMoveInput(s.x, s.y, s.sprint, jump);
   }
 

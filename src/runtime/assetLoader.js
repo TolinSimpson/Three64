@@ -586,7 +586,8 @@ export class SceneLoader {
           const instance = new ctor({ game: this.game, object: o, options: c.params, propName: c.type });
           if (instance) {
             try { o.__components = o.__components || []; o.__components.push(instance); } catch {}
-            this.game.componentInstances.push(instance);
+            if (this.game.addComponent) this.game.addComponent(instance);
+            else this.game.componentInstances.push(instance);
             created.push(instance);
           }
           if (instance && typeof instance.Initialize === "function") {
@@ -858,7 +859,8 @@ export class SceneLoader {
               instance.__object = obj;
               instance.__scriptUrl = scriptUrl;
               try { obj.__components = obj.__components || []; obj.__components.push(instance); } catch {}
-              this.game.componentInstances.push(instance);
+              if (this.game.addComponent) this.game.addComponent(instance);
+              else this.game.componentInstances.push(instance);
               created.push(instance);
             }
             if (instance && typeof instance.Initialize === "function") {

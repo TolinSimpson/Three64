@@ -97,6 +97,18 @@ export class Scene extends Component {
     app.sceneIds = this.sceneIds;
   }
 
+  addComponent(c) {
+    if (this.app?.addComponent) this.app.addComponent(c);
+    else this.componentInstances.push(c);
+  }
+  removeComponent(c) {
+    if (this.app?.removeComponent) this.app.removeComponent(c);
+    else {
+      const idx = this.componentInstances.indexOf(c);
+      if (idx >= 0) this.componentInstances.splice(idx, 1);
+    }
+  }
+
   // When authored as a component, allow Initialize to forward to optional init()
   Initialize() {
     if (typeof this.init === "function") {

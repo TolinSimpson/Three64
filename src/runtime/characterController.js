@@ -1,5 +1,6 @@
 'use strict';
 import { Euler, Vector2, Vector3 } from "three";
+import { resolveCharacterPhysics } from "./characterPhysics.js";
 
 export class CharacterController {
   constructor({
@@ -89,8 +90,8 @@ export class CharacterController {
 
     // Integrate with physics
     const physics = app?.physics;
-    if (physics && typeof physics.resolvePlayer === 'function') {
-      physics.resolvePlayer(this, desired, dt);
+    if (physics) {
+      resolveCharacterPhysics(physics, this, desired, dt);
     } else {
       // Fallback: simple kinematic integration without collisions
       this.velY -= (this.gravity ?? 9.8) * dt;
@@ -128,5 +129,3 @@ function lerp(a, b, t) {
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
-
-
