@@ -46,9 +46,9 @@ npm run serve
 
 ## Start relay server
 ```bash
-    node server.js
-    # then open two browser windows http://localhost:5173/?lan=true (Connects to localhost:8080)
-    ```
+node server.js
+# then open two browser windows http://localhost:5173/?lan=true (Connects to localhost:8080)
+```
 
 Notes:
 - Production builds disable dev mode and do not include `/public/docs`.
