@@ -1,27 +1,10 @@
 {
   "type": "Player",
   "params": {
-    "inputIndex": 0,
-    "autoCamera": true,
     "lookSensitivity": 0.0022,
     "maxTouchPixelDelta": 120
   },
   "paramDescriptions": [
-    {
-      "key": "inputIndex",
-      "label": "Player Index (0=P1)",
-      "type": "number",
-      "min": 0,
-      "max": 3,
-      "step": 1,
-      "description": "Designates input channel: 0=Keyboard/Mouse (P1), 1+=Gamepads."
-    },
-    {
-      "key": "autoCamera",
-      "label": "Auto-create Camera",
-      "type": "boolean",
-      "description": "Create and attach a camera if none provided (P1 reuses main camera)."
-    },
     {
       "key": "lookSensitivity",
       "label": "Look Sensitivity",
