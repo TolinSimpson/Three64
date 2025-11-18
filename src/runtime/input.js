@@ -9,6 +9,17 @@ export class Input {
     window.addEventListener('keydown', e => this.keys.add(e.code));
     window.addEventListener('keyup', e => this.keys.delete(e.code));
 
+    // Pointer look (pointer lock)
+    this.dom.addEventListener('click', () => {
+      try { this.dom.requestPointerLock?.(); } catch (_e) {}
+    });
+    document.addEventListener('pointerlockchange', () => {});
+    this.dom.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement !== this.dom) return;
+      this.lookDeltaX += e.movementX || 0;
+      this.lookDeltaY += e.movementY || 0;
+    });
+
     // Touch (virtual joystick + look swipe)
     this.moveTouchId = null;
     this.lookTouchId = null;
