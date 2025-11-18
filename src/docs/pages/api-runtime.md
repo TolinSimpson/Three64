@@ -2,124 +2,69 @@
 
 This section lists primary exports for each runtime module. File paths are under `src/runtime/`.
 
-## agent.js
+For detailed API documentation, see the module-specific pages:
+
+- **[Engine & Config](runtime-engine.md)** (`engine.js`): Core loop, configuration, and app instance.
+- **[Component System](runtime-component.md)** (`component.js`): Base class and registries for logic and archetypes.
+- **[Asset Loading](runtime-assetLoader.md)** (`assetLoader.js`): GLTF loading, scene composition, and budgeting.
+- **[Input](runtime-input.md)** (`input.js`): Composite input handling (Keyboard, Gamepad, Touch).
+- **[Physics](runtime-physics.md)** (`physics.js`): Ammo.js integration, colliders, and raycasting.
+- **[Rendering](runtime-renderer.md)** (`renderer.js`): Three.js wrapper and retro post-processing.
+- **[UI System](runtime-uiSystem.md)** (`uiSystem.js`): HTML overlay management.
+- **[Audio](runtime-audioSystem.md)** (`audioSystem.js`): Simple audio playback with voice limits.
+- **[Scene](runtime-scene.md)** (`scene.js`): Scene-scoped configuration (lighting, skybox).
+- **[Event System](runtime-eventSystem.md)** (`eventSystem.js`): Pub/Sub messaging and game loop phases.
+- **[Pooling](runtime-pool.md)** (`pool.js`): Object pooling and prewarming.
+
+## Additional Modules
+
+### `agent.js`
 - `export class Agent extends Component`
-  - AI/agent behavior component (ticks per frame via scene/engine).
+- AI/agent behavior component (ticks per frame).
 
-## assetLoader.js
-- `export class GLTFAssetLoader`
-  - Loads `.glb/.gltf`, resolves textures, prepares meshes/materials.
-- `export class SceneLoader`
-  - High-level scene asset orchestration and caching.
-- `export function estimatePaletteBytes(numColors: number): number`
-- `export function chooseBppForColors(numColors: number): 4|8|16`
-- `export function quantizationPlan({ width, height, numColors })`
-- `export function normalizeHexColor(input: string|number): string`
-  - Helpers for texture/palette budgeting and color handling.
-
-## audioSystem.js
-- `export class AudioSystem`
-  - Simple audio layer; tracks voice counts for budget display.
-
-## characterController.js
+### `characterController.js`
 - `export class CharacterController`
-  - Movement + ground checks; integrates with physics when available.
+- Movement + ground checks; integrates with physics.
 
-## component.js
-- `export class Component`
-  - Base type for all gameplay pieces; override lifecycle as needed.
-- `export const ComponentRegistry`
-  - Register component constructors and fetch by name.
+### `debug.js`
+- `export const Debug`: Dev flags, HUD elements, CLI controls.
+- `export class BudgetTracker`: Tracks triangles, particles, UI tiles, RAM.
 
-## debug.js
-- `export const Debug`
-  - Dev flags, HUD elements, CLI controls.
-- `export class BudgetTracker`
-  - Tracks triangles, particles, UI tiles, RAM, etc., per frame.
-- Other internal helpers manage overlay and keybindings (F1–F4).
+### `io.js`
+- `saveLocal(key, data)`, `loadLocal(key, fallback)`
+- `downloadJSON(filename, data)`
+- Utilities for saving/loading state.
 
-## engine.js
-- `export const config`
-  - Global configuration including budgets and expansion pak flags.
-- `export function tmemBytesForTexture(...)`
-- `export function fitsInTMEM(...)`
-- `export function getInternalResolution()`
-- `export function uiSpriteWithinBudget(...)`
-- `export function uiAtlasWithinBudget(...)`
-- `export function createApp()`
-  - App bootstrapping; wires systems and exposes minimal game API.
-  - Exposes `app.pool` (pool manager) after initialization.
+### `loadingScreen.js`
+- Default loading screen implementation.
 
-## eventSystem.js
-- `export class EventSystem`
-  - Lightweight pub/sub for gameplay events.
-
-## input.js
-- `export class Input`
-  - Keyboard/mouse/gamepad abstraction feeding player/controller.
-
-## io.js
-- `export function saveLocal(key, data)`
-- `export function loadLocal(key, fallback)`
-- `export function downloadJSON(filename, data)`
-- `export function serializeComponents(game)`
-- `export function deserializeComponents(game, items)`
-  - Utilities for saving/loading and component state serialization.
-
-## loadingScreen.js
-- Loading screen module displayed during heavy asset loads.
-
-## navmesh.js
+### `navmesh.js`
 - `export class NavMesh extends Component`
-  - Navmesh ingestion + queries for agents or controllers.
+- Navmesh ingestion and queries.
 
-## particleSystem.js
+### `particleSystem.js`
 - `export class ParticleSystem`
-  - Particle emitters/effects with per-frame budgeting.
+- Particle emitters/effects with per-frame budgeting.
 
-## rigidbody.js
+### `projectile.js`
+- `export class Projectile extends Component`
+- Simple projectile logic.
+
+### `raycaster.js`
+- `export class Raycaster extends Component`
+- Recurring raycast queries (e.g., for sensors).
+
+### `rigidbody.js`
 - `export class Rigidbody extends Component`
-  - General-purpose Ammo rigid body component with simple collision and volume events.
+- Component wrapper for `PhysicsWorld` bodies.
 
-## physics.js
-- `export class PhysicsWorld`
-  - Ammo world wrapper; manages bodies and simulation step.
-- `export function stepAmmo(dt)`
-- `export function ammoRaycast(origin, direction, maxDistance)`
+### `skybox.js`
+- `export function createSkybox(camera, options)`
+- Procedural gradient skybox helper.
 
-## player.js
-- `export class Player extends Component`
-  - Player entity wiring input + controller + camera hooks.
+### `statistic.js` / `statisticBar.js`
+- Components for tracking and displaying values (health, mana, etc.).
 
-## renderer.js
-- `export class RendererCore`
-  - Creates Three.js renderer, cameras, scene graph glue.
-
-## scene.js
-- `export class Scene extends Component`
-  - Scene root component; spawns other components.
-
-## skybox.js
-- `export function createSkybox(camera, { ... })`
-  - Utility for skybox creation with engine conventions.
-
-## pool.js
-- `export class Pool extends Component`
-  - Singleton component that configures pooling and prewarm behavior.
-  - Options:
-    - `items[]`: `{ archetype, size, prewarm, max, overflow, overrides?, traits? }`
-    - `autoScan` (boolean): when true, scans GLTF userData (`archetype`, `pool.size`, `pool.prewarm`) and prewarms pools.
-- `export function ensurePoolSingleton(game)`
-  - Ensures a singleton Pool instance exists; used by the engine after scene load to enable scanning.
-- `app.pool` API:
-  - `prewarm(name, count, { overrides, traits })`
-  - `obtain(name, { overrides, traits }) -> Object3D | null`
-  - `release(object)`
-  - `setPolicy(name, { max, overflow })`
-    - `overflow`: `"create"` | `"drop"` | `"reuseOldest"`
-
-Notes:
-- Many modules expose additional methods/fields beyond the signatures above. Consult source for behaviors and extension points.
-- Budget helpers in `engine.js` and `debug.js` surface constraints visually in dev mode.
-
-
+### `volume.js`
+- `export class Volume extends Component`
+- Trigger volumes (Enter/Exit/Stay events).
