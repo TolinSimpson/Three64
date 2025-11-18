@@ -27,6 +27,8 @@ import "./inventory.js";
 import { MainMenu } from "./mainMenu.js";
 import { SettingsMenu } from "./settingsMenu.js";
 import { Input } from "./input.js";
+import { NetworkSystem } from "./network.js";
+import { MultisynqNetworkSystem } from "./multisynq.js";
 export let config = null;
 
 async function loadEngineConfig() {
@@ -270,6 +272,14 @@ export async function createApp() {
   // Input + Events
   app.eventSystem = new EventSystem({ fixedTimestep: 1 / 60 });
   app.input = new Input(canvas);
+  
+  // Network (choose implementation)
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('key') || params.has('id') || params.has('multisynq')) {
+    app.network = new MultisynqNetworkSystem(app);
+  } else {
+    app.network = new NetworkSystem(app);
+  }
 
   // UI System
   app.ui = new UISystem(app);
@@ -320,6 +330,7 @@ export async function createApp() {
   });
   app.eventSystem.on('update', (dt) => {
     runPhase('Update', dt);
+    app.network.update(dt);
     app._runUpdaters(dt);
     try { app.ui?.update(dt); } catch {}
   });
@@ -376,12 +387,22 @@ export async function start() {
   const params = new URLSearchParams(window.location.search);
   const gltfUrlParam = params.get("gltf");
   const sceneParam = params.get("scene") || null;
+  const lanParam = params.get("lan");
+  const multisynqParam = params.has("multisynq") || params.has("key");
 
   // Initialize settings and main menu systems
   const settingsMenu = new SettingsMenu(app);
   await settingsMenu.init();
   const mainMenu = new MainMenu(app, settingsMenu);
   await mainMenu.init();
+
+  if (multisynqParam) {
+    // Auto-connect Multisynq (args handled inside connect)
+    app.network.connect();
+  } else if (lanParam) {
+    // Auto-connect LAN
+    app.network.connect(lanParam === 'true' ? undefined : lanParam);
+  }
 
   // If no explicit scene/glTF requested, show the main menu and return to animation loop
   if (!gltfUrlParam && !sceneParam) {

@@ -42,6 +42,10 @@ For detailed API documentation, see the module-specific pages:
 - `export class NavMesh extends Component`
 - Navmesh ingestion and queries.
 
+### `network.js` / `multisynq.js`
+- `export class NetworkSystem` / `MultisynqNetworkSystem`
+- Multiplayer state replication and remote player management.
+
 ### `particleSystem.js`
 - `export class ParticleSystem`
 - Particle emitters/effects with per-frame budgeting.

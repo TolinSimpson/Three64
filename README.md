@@ -44,6 +44,12 @@ npm run serve
 # then open http://localhost:5173/
 ```
 
+## Start relay server
+```bash
+    node server.js
+    # then open two browser windows http://localhost:5173/?lan=true (Connects to localhost:8080)
+    ```
+
 Notes:
 - Production builds disable dev mode and do not include `/public/docs`.
 - Entry: `src/runtime/engine.js` → Output: `public/build/runtime.js`.
@@ -79,6 +85,7 @@ In development, press F1 for the debug overlay. An “Open Docs” button appear
     - [Item](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/runtime-item.md)
     - [Loading Screen](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/runtime-loadingScreen.md)
     - [Navmesh](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/runtime-navmesh.md)
+    - [Network](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/runtime-network.md)
     - [Particle System](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/runtime-particleSystem.md)
     - [Physics](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/runtime-physics.md)
     - [Player](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/runtime-player.md)
