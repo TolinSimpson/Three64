@@ -7,14 +7,18 @@ import { AssetLibrary }  from './assetLibrary.js';
 import { Hierarchy }     from './hierarchy.js';
 import { Inspector }     from './inspector.js';
 import { Toolbar }       from './toolbar.js';
+import { SceneContext }  from './sceneContext.js';
 
 // --- Initialise Viewport ---
 const canvas = document.getElementById('viewport-canvas');
 const viewport = new Viewport(canvas);
 
+// --- Initialise Scene Context ---
+const sceneContext = new SceneContext(viewport);
+
 // --- Initialise Inspector ---
 const inspectorEl = document.getElementById('inspector-content');
-const inspector = new Inspector(inspectorEl, viewport);
+const inspector = new Inspector(inspectorEl, viewport, sceneContext);
 
 // --- Initialise Hierarchy ---
 const treeEl = document.getElementById('hierarchy-tree');
@@ -22,11 +26,15 @@ const contextEl = document.getElementById('context-menu');
 const hierarchy = new Hierarchy(treeEl, contextEl, viewport);
 
 // Rebuild hierarchy when structural changes occur
-hierarchy.onChanged(() => inspector.refresh());
+hierarchy.onChanged(() => {
+  sceneContext.rebuild();
+  inspector.refresh();
+});
 
 // --- Initialise Asset Library ---
 const assetListEl = document.getElementById('asset-list');
 const assetLibrary = new AssetLibrary(assetListEl, viewport, (placed) => {
+  sceneContext.rebuild();
   hierarchy.rebuild();
   inspector.inspect(placed);
 });

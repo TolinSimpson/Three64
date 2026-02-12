@@ -10,10 +10,12 @@ export class Inspector {
   /**
    * @param {HTMLElement} containerEl  The #inspector-content element
    * @param {import('./viewport.js').Viewport} viewport
+   * @param {import('./sceneContext.js').SceneContext} [context]  Scene context for hinted dropdowns
    */
-  constructor(containerEl, viewport) {
+  constructor(containerEl, viewport, context) {
     this.container = containerEl;
     this.viewport = viewport;
+    this.context = context || null;
     this.componentDefs = [];  // loaded from /api/components
     this._currentObject = null;
 
@@ -34,6 +36,12 @@ export class Inspector {
       const res = await fetch('/api/components');
       const data = await res.json();
       this.componentDefs = data.components || [];
+
+      // Populate SceneContext with component type list and do initial scan
+      if (this.context) {
+        this.context.setComponentDefs(this.componentDefs);
+        this.context.rebuild();
+      }
     } catch (err) {
       console.warn('Failed to load component definitions:', err);
       this.componentDefs = [];
@@ -202,13 +210,14 @@ export class Inspector {
         // Remove component
         components.splice(i, 1);
         writeComponents(obj.userData, components);
+        if (this.context) this.context.rebuild();
         this.inspect(obj); // rebuild
       });
       const body = group.querySelector('.inspector-group-body');
 
-      // Merge defaults from definition
-      const defaultParams = def ? { ...def.params } : {};
-      const mergedParams = { ...defaultParams, ...comp.params };
+      // Deep-merge defaults from definition with component params
+      const defaultParams = def ? JSON.parse(JSON.stringify(def.params)) : {};
+      const mergedParams = deepMerge(defaultParams, comp.params || {});
       const descriptions = def?.paramDescriptions || [];
 
       const editor = buildPropertyEditor(mergedParams, descriptions, (key, value) => {
@@ -218,7 +227,8 @@ export class Inspector {
           setNestedValue(comp.params, key, value);
         }
         writeComponents(obj.userData, components);
-      });
+        if (this.context) this.context.rebuild();
+      }, this.context, comp.type);
 
       body.appendChild(editor);
       wrapper.appendChild(group);
@@ -267,6 +277,7 @@ export class Inspector {
 
       components.push({ type: typeName, params });
       writeComponents(obj.userData, components);
+      if (this.context) this.context.rebuild();
       this.inspect(obj); // rebuild
     });
 
@@ -337,8 +348,26 @@ function setNestedValue(obj, key, value) {
   let cur = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const p = parts[i];
-    if (!(p in cur) || typeof cur[p] !== 'object') cur[p] = {};
+    if (!(p in cur) || typeof cur[p] !== 'object' || cur[p] === null) cur[p] = {};
     cur = cur[p];
   }
   cur[parts[parts.length - 1]] = value;
+}
+
+/**
+ * Deep-merge source into target. Arrays and primitives are overwritten.
+ * Nested plain objects are recursively merged.
+ */
+function deepMerge(target, source) {
+  if (!source || typeof source !== 'object') return target;
+  const out = { ...target };
+  for (const [k, v] of Object.entries(source)) {
+    if (v && typeof v === 'object' && !Array.isArray(v) &&
+        out[k] && typeof out[k] === 'object' && !Array.isArray(out[k])) {
+      out[k] = deepMerge(out[k], v);
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
 }
