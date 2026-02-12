@@ -1,0 +1,25 @@
+{
+  "type": "AnimationController",
+  "params": {
+    "defaultState": "idle",
+    "states": {
+      "idle":  { "clipName": "Idle",  "loop": true,  "speed": 1.0 },
+      "walk":  { "clipName": "Walk",  "loop": true,  "speed": 1.0 },
+      "run":   { "clipName": "Run",   "loop": true,  "speed": 1.4 },
+      "fire":  { "clipName": "Fire",  "loop": false, "speed": 1.0, "returnTo": "idle" },
+      "death": { "clipName": "Death", "loop": false, "speed": 1.0 }
+    },
+    "transitions": {
+      "idle->walk":  { "duration": 0.2 },
+      "*->death":    { "duration": 0.1 },
+      "*->*":        { "duration": 0.25 }
+    },
+    "autoDetect": false
+  },
+  "paramDescriptions": [
+    { "key": "defaultState", "label": "Default State",  "type": "string",  "description": "Initial animation state name." },
+    { "key": "states",       "label": "States",         "type": "object",  "description": "Map of state name to { clipName, loop, speed, returnTo }." },
+    { "key": "transitions",  "label": "Transitions",    "type": "object",  "description": "Map of from->to to { duration }. * is wildcard." },
+    { "key": "autoDetect",   "label": "Auto Detect",    "type": "boolean", "description": "Auto-create a state for each clip." }
+  ]
+}

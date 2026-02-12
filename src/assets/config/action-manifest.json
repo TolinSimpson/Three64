@@ -2,8 +2,11 @@
   "actions": [
     { "id": "AddItem", "label": "Add Item", "params": ["target", "item"] },
     { "id": "ModifyStatistic", "label": "Modify Statistic", "params": ["name", "op", "value", "duration", "easing", "keepRatio", "target"] },
-    { "id": "SendComponentMessage", "label": "Send Component Message", "params": ["target", "component", "method", "args", "objectName"] }
+    { "id": "SendComponentMessage", "label": "Send Component Message", "params": ["target", "component", "method", "args", "objectName"] },
+    { "id": "AdvanceMatchState", "label": "Advance Match State", "params": [] },
+    { "id": "SetAnimState", "label": "Set Animation State", "params": ["target", "state"] },
+    { "id": "NetworkAction", "label": "Send Network Action", "params": ["action", "params"] },
+    { "id": "RequestRespawn", "label": "Request Respawn", "params": ["playerId"] },
+    { "id": "TimerControl", "label": "Timer Control", "params": ["target", "timerName", "action"] }
   ]
 }
-
-

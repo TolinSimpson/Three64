@@ -1,0 +1,37 @@
+{
+  "type": "BehaviorFSM",
+  "params": {
+    "defaultState": "idle",
+    "states": {
+      "idle":   { "behavior": "none",   "duration": 2, "next": "patrol" },
+      "patrol": { "behavior": "patrol", "waypointTag": "PatrolPoint", "speed": 2.0, "next": "idle" },
+      "chase":  { "behavior": "seek",   "speedMultiplier": 1.5 },
+      "attack": { "behavior": "ranged", "fireRate": 1.2, "range": 15 }
+    },
+    "transitions": [
+      { "from": "patrol", "to": "chase",  "condition": "targetDistance", "op": "<", "value": 15 },
+      { "from": "chase",  "to": "attack", "condition": "targetDistance", "op": "<", "value": 10 },
+      { "from": "attack", "to": "chase",  "condition": "targetDistance", "op": ">", "value": 12 }
+    ],
+    "perception": {
+      "sightRange": 20,
+      "sightAngle": 120,
+      "hearingRange": 10,
+      "updateInterval": 0.25
+    },
+    "difficulty": {
+      "reactionTime": 0.3,
+      "accuracy": 0.7,
+      "aggressiveness": 0.5
+    },
+    "stateAnimations": {}
+  },
+  "paramDescriptions": [
+    { "key": "defaultState",    "label": "Default State",     "type": "string",  "description": "Initial FSM state." },
+    { "key": "states",          "label": "States",            "type": "object",  "description": "Map of state name to behavior config." },
+    { "key": "transitions",     "label": "Transitions",       "type": "object",  "description": "Array of condition-based transitions." },
+    { "key": "perception",      "label": "Perception",        "type": "object",  "description": "Sight/hearing config." },
+    { "key": "difficulty",      "label": "Difficulty",        "type": "object",  "description": "Scaling params." },
+    { "key": "stateAnimations", "label": "State Animations",  "type": "object",  "description": "Map of FSM state to animation state name." }
+  ]
+}

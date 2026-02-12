@@ -1,0 +1,28 @@
+{
+  "type": "GameMode",
+  "params": {
+    "mode": "Deathmatch",
+    "matchStates": {
+      "lobby":     { "next": "countdown", "auto": false },
+      "countdown": { "next": "playing",   "auto": true, "timerName": "countdownTimer" },
+      "playing":   { "next": "ended",     "auto": false },
+      "ended":     { "next": "lobby",     "auto": true, "timerName": "endedTimer" }
+    },
+    "teams": [
+      { "id": 0, "name": "FFA", "color": "0xffffff" }
+    ],
+    "winConditions": [],
+    "respawnDelay": 3,
+    "spawnPointTag": "SpawnPoint",
+    "events": {}
+  },
+  "paramDescriptions": [
+    { "key": "mode",          "label": "Mode",            "type": "string",  "description": "Descriptive label for the game mode." },
+    { "key": "matchStates",   "label": "Match States",    "type": "object",  "description": "State machine: { stateName: { next, auto, timerName } }." },
+    { "key": "teams",         "label": "Teams",           "type": "object",  "description": "Array of { id, name, color }." },
+    { "key": "winConditions", "label": "Win Conditions",  "type": "object",  "description": "Array of { statistic, op, value }." },
+    { "key": "respawnDelay",  "label": "Respawn Delay",   "type": "number",  "min": 0, "step": 0.5, "description": "Seconds before respawn." },
+    { "key": "spawnPointTag", "label": "Spawn Point Tag", "type": "string",  "description": "Tag to find SpawnPoint objects." },
+    { "key": "events",        "label": "Events",          "type": "object",  "description": "Hooks: onMatchStart, onMatchEnd, onWinConditionMet, etc." }
+  ]
+}

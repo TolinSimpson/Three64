@@ -46,6 +46,24 @@ export class NetworkSystem {
     this._updateRemotePlayers(dt);
   }
 
+  // Send generic object state (used by NetworkState component)
+  sendState(objectId, props) {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    this.ws.send(JSON.stringify({ type: 'state', objectId, props }));
+  }
+
+  // Send one-shot RPC-style action
+  sendAction(action, params = {}) {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    this.ws.send(JSON.stringify({ type: 'action', action, params }));
+  }
+
+  // Send game-mode-level broadcast
+  sendMatch(event, data = {}) {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    this.ws.send(JSON.stringify({ type: 'match', event, data }));
+  }
+
   _sendLocalState() {
     const p = this.app.player;
     if (!p || !p.object) return;
@@ -80,6 +98,14 @@ export class NetworkSystem {
           break;
         case 'state':
           this._updateRemoteState(msg);
+          break;
+        case 'action':
+          // Emit through EventSystem for other components to handle
+          this.app?.eventSystem?.emit(`net:action:${msg.action}`, msg.params || {});
+          break;
+        case 'match':
+          // Emit through EventSystem for GameMode and other systems
+          this.app?.eventSystem?.emit(`net:match:${msg.event}`, msg.data || {});
           break;
       }
     } catch (e) {

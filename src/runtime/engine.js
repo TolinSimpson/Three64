@@ -24,6 +24,12 @@ import "./statistic.js";
 import "./statisticBar.js";
 import "./item.js";
 import "./inventory.js";
+import "./timer.js";
+import "./animationController.js";
+import "./networkState.js";
+import "./gameMode.js";
+import "./behaviorFSM.js";
+import "./spawnPoint.js";
 import { MainMenu } from "./mainMenu.js";
 import { SettingsMenu } from "./settingsMenu.js";
 import { Input } from "./input.js";
@@ -284,6 +290,9 @@ export async function createApp() {
   // UI System
   app.ui = new UISystem(app);
   try { app.ui.init(); } catch (e) { console.warn("UISystem init failed:", e); }
+
+  // Global statistics registry (populated by scope:"global" Statistics)
+  app.statistics = new Map();
 
   // Pooling
   app.pool = new PoolManager(app);

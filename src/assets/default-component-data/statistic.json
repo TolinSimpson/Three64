@@ -7,7 +7,21 @@
     "current": 100,
     "regenPerSec": 0,
     "clamp": true,
-    "easing": "linear"
+    "easing": "linear",
+    "scope": "object",
+    "sync": "none",
+    "persist": false
   },
-  "paramDescriptions": []
+  "paramDescriptions": [
+    { "key": "name",        "label": "Name",      "type": "string",  "description": "Unique identifier for this statistic." },
+    { "key": "min",         "label": "Min",        "type": "number",  "step": 1, "description": "Minimum value." },
+    { "key": "max",         "label": "Max",        "type": "number",  "step": 1, "description": "Maximum value." },
+    { "key": "current",     "label": "Current",    "type": "number",  "step": 1, "description": "Starting value." },
+    { "key": "regenPerSec", "label": "Regen/sec",  "type": "number",  "step": 0.1, "description": "Passive regen (positive) or drain (negative) per second." },
+    { "key": "clamp",       "label": "Clamp",      "type": "boolean", "description": "Clamp value between min and max." },
+    { "key": "easing",      "label": "Easing",     "type": "string",  "description": "Default easing for over-time deltas." },
+    { "key": "scope",       "label": "Scope",      "type": "string",  "description": "object = local, global = game.statistics registry, local = excluded from network sync." },
+    { "key": "sync",        "label": "Sync",       "type": "string",  "description": "none = no network, authoritative = broadcasts, replicated = receives." },
+    { "key": "persist",     "label": "Persist",    "type": "boolean", "description": "Include in save/load serialization." }
+  ]
 }

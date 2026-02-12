@@ -181,6 +181,8 @@ export class Agent extends Component {
     this._path = null;
     this._pathIndex = 0;
     this._timeSinceRepath = 0;
+    // BehaviorFSM delegation (lazy-resolved in FixedUpdate)
+    this._fsm = null;
   }
 
   _getTargetPosition() {
@@ -198,6 +200,37 @@ export class Agent extends Component {
 
   FixedUpdate(dt, app) {
     if (!this.controller) return;
+
+    // If a BehaviorFSM is co-located, delegate to it
+    if (!this._fsm) {
+      this._fsm = this.getComponent?.('BehaviorFSM') || null;
+    }
+    if (this._fsm && typeof this._fsm.evaluate === 'function') {
+      const context = { app, position: this.controller.position, object: this.object };
+      const result = this._fsm.evaluate(dt, context);
+      // Apply FSM output to CharacterController
+      const mz = result.moveInput?.z || 0;
+      const mx = result.moveInput?.x || 0;
+      this.controller.setMoveInput(mx, mz, result.sprint || false, false);
+      if (result.lookTarget) {
+        this._faceToward(result.lookTarget, dt);
+      }
+      this.controller.fixedStep(app, dt);
+      // Handle fire
+      if (result.fire) {
+        this._fireCooldown -= dt;
+        if (this._fireCooldown <= 0) {
+          this._fireCooldown = 1 / Math.max(0.01, this.fireRate);
+          const goal = result.lookTarget || this._getTargetPosition();
+          if (goal) this._shootProjectile(app, goal);
+        }
+      } else {
+        this._fireCooldown = Math.max(0, this._fireCooldown - dt);
+      }
+      return;
+    }
+
+    // Original hardcoded behavior (backward compatibility)
     let goal = this._getTargetPosition();
     // Fallback: use player rig/camera rig as target if none explicitly set
     if (!goal) {

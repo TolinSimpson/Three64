@@ -11,16 +11,41 @@ export class Statistic extends Component {
       regenPerSec: 0,     // positive for regen, negative for drain
       clamp: true,
       easing: 'linear',   // default easing for over-time deltas
+      scope: 'object',    // 'object' | 'global' | 'local'
+      sync: 'none',       // 'none' | 'authoritative' | 'replicated'
+      persist: false,      // include in save/load serialization
     };
+  }
+
+  static getParamDescriptions() {
+    return [
+      { key: 'name',        label: 'Name',          type: 'string',  description: 'Unique identifier for this statistic.' },
+      { key: 'min',         label: 'Min',           type: 'number',  step: 1, description: 'Minimum value.' },
+      { key: 'max',         label: 'Max',           type: 'number',  step: 1, description: 'Maximum value.' },
+      { key: 'current',     label: 'Current',       type: 'number',  step: 1, description: 'Starting value.' },
+      { key: 'regenPerSec', label: 'Regen/sec',     type: 'number',  step: 0.1, description: 'Passive regen (positive) or drain (negative) per second.' },
+      { key: 'clamp',       label: 'Clamp',         type: 'boolean', description: 'Clamp value between min and max.' },
+      { key: 'easing',      label: 'Easing',        type: 'string',  description: 'Default easing for over-time deltas (linear, easeInQuad, easeOutQuad, easeInOutCubic).' },
+      { key: 'scope',       label: 'Scope',         type: 'string',  description: '"object" = local to this object, "global" = registered in game.statistics by name, "local" = excluded from network sync.' },
+      { key: 'sync',        label: 'Sync',          type: 'string',  description: '"none" = no network, "authoritative" = this client owns & broadcasts, "replicated" = receives from network.' },
+      { key: 'persist',     label: 'Persist',       type: 'boolean', description: 'Include in save/load serialization.' },
+    ];
   }
 
   Initialize() {
     this._activeTween = null; // { remaining, total, delta, start, easing }
     this._lastEmitValue = undefined;
     this._unsubs = [];
+
+    const name = this._getName();
+
+    // Register in global statistics map if scope is "global"
+    if (this.options.scope === 'global' && this.game?.statistics) {
+      this.game.statistics.set(name, this);
+    }
+
     // Subscribe to UI intents if UISystem exists
     const ui = this.game?.ui;
-    const name = this._getName();
     if (ui) {
       this._unsubs.push(ui.on(`stat:${name}:add`, (amount) => {
         const n = Number(amount) || 0;
@@ -51,6 +76,14 @@ export class Statistic extends Component {
   }
 
   Dispose() {
+    // Unregister from global statistics map
+    const name = this._getName();
+    if (this.options?.scope === 'global' && this.game?.statistics) {
+      if (this.game.statistics.get(name) === this) {
+        this.game.statistics.delete(name);
+      }
+    }
+
     if (Array.isArray(this._unsubs)) {
       for (const fn of this._unsubs) { try { fn(); } catch {} }
     }
@@ -133,6 +166,24 @@ export class Statistic extends Component {
     this.options.current = this._clamp(this.options.current);
   }
 
+  // Serialization support for persist flag
+  getSerializableState() {
+    if (!this.options?.persist) return null;
+    return {
+      name: this._getName(),
+      current: this.options.current,
+      min: this.options.min,
+      max: this.options.max,
+    };
+  }
+
+  applyDeserializedState(data) {
+    if (!data) return;
+    if (typeof data.current === 'number') this.options.current = this._clamp(data.current);
+    if (typeof data.min === 'number') this.options.min = data.min;
+    if (typeof data.max === 'number') this.options.max = data.max;
+  }
+
   // Helpers
   _applyInstant(delta) {
     if (!delta) return;
@@ -161,7 +212,10 @@ export class Statistic extends Component {
     const key = `${cur}|${min}|${max}`;
     if (this._lastEmitValue === key) return;
     this._lastEmitValue = key;
+    // Emit to UI system (existing behavior)
     this.game?.ui?.emit(`stat:${name}:changed`, { name, current: cur, min, max });
+    // Emit to EventSystem so GameMode and other non-UI systems can listen
+    this.game?.eventSystem?.emit(`stat:${name}:changed`, { name, current: cur, min, max });
   }
 }
 

@@ -1,0 +1,19 @@
+{
+  "type": "SpawnPoint",
+  "params": {
+    "tags": "SpawnPoint",
+    "team": -1,
+    "cooldown": 0,
+    "radius": 0,
+    "itemArchetype": "",
+    "respawnInterval": 0
+  },
+  "paramDescriptions": [
+    { "key": "tags",            "label": "Tags",              "type": "string",  "description": "Comma-separated tags." },
+    { "key": "team",            "label": "Team",              "type": "number",  "min": -1, "step": 1, "description": "Team restriction (-1 = any)." },
+    { "key": "cooldown",        "label": "Cooldown (s)",      "type": "number",  "min": 0, "step": 0.5, "description": "Seconds before reuse." },
+    { "key": "radius",          "label": "Jitter Radius (m)", "type": "number",  "min": 0, "step": 0.1, "description": "Random offset radius." },
+    { "key": "itemArchetype",   "label": "Item Archetype",    "type": "string",  "description": "Archetype to spawn here." },
+    { "key": "respawnInterval", "label": "Respawn Interval",  "type": "number",  "min": 0, "step": 1, "description": "Seconds between item respawns." }
+  ]
+}

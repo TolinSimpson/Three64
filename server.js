@@ -37,8 +37,8 @@ wss.on('connection', function connection(ws) {
       const msg = JSON.parse(data);
       msg.id = id; // Ensure authoritative ID
       
-      if (msg.type === 'state') {
-        // Broadcast movement/state to others
+      if (msg.type === 'state' || msg.type === 'action' || msg.type === 'match') {
+        // Broadcast state/action/match to others
         broadcast(msg, ws);
       }
     } catch (e) {

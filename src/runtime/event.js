@@ -185,6 +185,109 @@ ActionRegistry.register("SendComponentMessage", {
 	}
 });
 
+// ----------------------------------
+// New actions for game systems
+// ----------------------------------
+
+ActionRegistry.register("AdvanceMatchState", {
+	label: "Advance Match State",
+	params: [],
+	handler: async (ctx) => {
+		// Find GameMode component in the scene
+		const comps = ctx?.game?.componentInstances || [];
+		for (const c of comps) {
+			if (c?.constructor?.name === 'GameMode' && typeof c.advanceState === 'function') {
+				c.advanceState();
+				return;
+			}
+		}
+	}
+});
+
+ActionRegistry.register("SetAnimState", {
+	label: "Set Animation State",
+	params: ["target", "state"],
+	handler: async (ctx, params) => {
+		const obj = resolveTargetObject(ctx, params.target || "self");
+		if (!obj) return;
+		const ac = findComponentOnObject(obj, "AnimationController");
+		if (ac && typeof ac.setState === 'function') {
+			ac.setState(params.state || "idle");
+		}
+	}
+});
+
+ActionRegistry.register("NetworkAction", {
+	label: "Send Network Action",
+	params: ["action", "params"],
+	handler: async (ctx, params) => {
+		const net = ctx?.game?.network;
+		if (net && typeof net.sendAction === 'function') {
+			const actionParams = params.params || {};
+			if (typeof actionParams === 'string') {
+				try { net.sendAction(params.action, JSON.parse(actionParams)); } catch { net.sendAction(params.action, {}); }
+			} else {
+				net.sendAction(params.action, actionParams);
+			}
+		}
+	}
+});
+
+ActionRegistry.register("RequestRespawn", {
+	label: "Request Respawn",
+	params: ["playerId"],
+	handler: async (ctx, params) => {
+		const comps = ctx?.game?.componentInstances || [];
+		for (const c of comps) {
+			if (c?.constructor?.name === 'GameMode' && typeof c.requestRespawn === 'function') {
+				c.requestRespawn(params.playerId || 0);
+				return;
+			}
+		}
+	}
+});
+
+ActionRegistry.register("TimerControl", {
+	label: "Timer Control",
+	params: ["target", "timerName", "action"],
+	handler: async (ctx, params) => {
+		const obj = resolveTargetObject(ctx, params.target || "self");
+		// Find timer on the target object, or search scene
+		let timer = null;
+		if (obj) {
+			const comps = obj.__components || [];
+			for (const c of comps) {
+				if (c?.constructor?.name === 'Timer') {
+					const n = (c.options?.name || '').toString().replace(/\s+/g, '').toLowerCase();
+					const want = (params.timerName || '').toString().replace(/\s+/g, '').toLowerCase();
+					if (n === want) { timer = c; break; }
+				}
+			}
+		}
+		// Fallback: search all components
+		if (!timer) {
+			const allComps = ctx?.game?.componentInstances || [];
+			const want = (params.timerName || '').toString().replace(/\s+/g, '').toLowerCase();
+			for (const c of allComps) {
+				if (c?.constructor?.name === 'Timer') {
+					const n = (c.options?.name || '').toString().replace(/\s+/g, '').toLowerCase();
+					if (n === want) { timer = c; break; }
+				}
+			}
+		}
+		if (!timer) return;
+		const action = (params.action || '').toString().toLowerCase();
+		switch (action) {
+			case 'start':  timer.start();  break;
+			case 'stop':   timer.stop();   break;
+			case 'pause':  timer.pause();  break;
+			case 'resume': timer.resume(); break;
+			case 'reset':  timer.reset();  break;
+			default: break;
+		}
+	}
+});
+
 export { ActionRegistry };
 
 
