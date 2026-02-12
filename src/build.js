@@ -359,6 +359,12 @@ const config = {
                 noErrorOnMissing: true,
               },
             ]),
+        // Editor CLI launcher (included in builds; the full editor server/frontend is NOT copied)
+        {
+          from: path.resolve(__dirname, 'editor/cli.mjs'),
+          to: path.resolve(__dirname, '../public/build/editor-cli.mjs'),
+          noErrorOnMissing: true,
+        },
       ],
     }),
     // Define build-time dev flag for the runtime

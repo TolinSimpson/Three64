@@ -44,6 +44,25 @@ npm run serve
 # then open http://localhost:5173/
 ```
 
+## Scene Editor
+```bash
+npm run editor
+# open http://localhost:3664
+```
+
+A browser-based scene authoring tool for placing GLTF objects, assigning components, and configuring their properties. All data is written into GLTF `userData` so the engine loads it directly.
+
+- **Assets panel** (left) lists models from `src/assets/models/`. Click one to enter placement mode, then click in the viewport to stamp it.
+- **Viewport** (center) shows the 3D scene. Orbit with mouse drag, zoom with scroll. Click objects to select them. Transform gizmos appear on the selected object.
+- **Hierarchy** (top-right) shows the scene tree. Right-click for duplicate/delete/rename.
+- **Inspector** (bottom-right) shows the selected object's name, transform, and components. Use the dropdown to add components; each one expands into a property editor auto-generated from the engine's `paramDescriptions`.
+- **Toolbar** shortcuts: **W** translate, **E** rotate, **R** scale, **Delete** remove, **Ctrl+D** duplicate, **Ctrl+S** save, **F** focus, **Escape** deselect.
+- **Save** writes the GLB back to `src/assets/models/` via the editor server. **Export** downloads the GLB to your browser.
+
+To use a different port: `npm run editor -- --port=3665`
+
+The editor is a dev-only tool. It is not included in `npm run build` output.
+
 ## Start relay server
 ```bash
 node server.js
