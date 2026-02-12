@@ -18,6 +18,7 @@ This README is a quick-start. Full docs live in `src/docs/pages/` and render dir
 - Audio system
 - Loading screen and main/settings menus
 - Asset pipeline + Blender add-on/exporter
+- Browser-based scene editor
 
 ## Requirements
 - Node.js 18+
@@ -61,7 +62,7 @@ A browser-based scene authoring tool for placing GLTF objects, assigning compone
 
 To use a different port: `npm run editor -- --port=3665`
 
-The editor is a dev-only tool. It is not included in `npm run build` output.
+The editor is a dev-only tool. It is not included in `npm run build` output. See [full editor documentation](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/editor.md) for details on the API, GLTF round-tripping, and file structure.
 
 ## Start relay server
 ```bash
@@ -81,9 +82,10 @@ In development, press F1 for the debug overlay. An “Open Docs” button appear
   - [Setup & Build](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/setup-build.md)
   - [Scene Conventions](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/scene-conventions.md)
   - [Assets Folder Structure](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/assets-folder-structure.md)
-- Asset Authoring (Blender)
-  - [Asset Authoring](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/asset-authoring.md)
+- Asset Authoring
+  - [Asset Authoring (Blender)](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/asset-authoring.md)
   - [Blender add-on README](https://github.com/TolinSimpson/Three64/blob/main/src/blender/README.md)
+  - [Scene Editor](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/editor.md)
 - API
   - [Architecture Overview](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/api-architecture.md)
   - [Runtime Overview](https://github.com/TolinSimpson/Three64/blob/main/src/docs/pages/api-runtime.md)
