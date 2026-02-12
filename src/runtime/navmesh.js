@@ -353,140 +353,47 @@ export class NavMesh extends Component {
 		__pendingNavLinks.length = 0;
 	}
 
-  _buildAcceleration() {
-    // Centroids
-    this.triangleCentroids = this.triangles.map(([a, b, c]) => {
-      const va = this.vertices[a], vb = this.vertices[b], vc = this.vertices[c];
-      return new Vector3().addVectors(va, vb).add(vc).multiplyScalar(1 / 3);
-    });
-    // Neighbor graph by shared edges
-    const edgeToTri = new Map();
-    const keyForEdge = (i0, i1) => i0 < i1 ? `${i0}_${i1}` : `${i1}_${i0}`;
-    for (let t = 0; t < this.triangles.length; t++) {
-      const [a, b, c] = this.triangles[t];
-      for (const [i0, i1] of [[a, b], [b, c], [c, a]]) {
-        const k = keyForEdge(i0, i1);
-        if (!edgeToTri.has(k)) edgeToTri.set(k, []);
-        edgeToTri.get(k).push(t);
-      }
-    }
-    this.neighbors = new Array(this.triangles.length);
-    for (let t = 0; t < this.triangles.length; t++) this.neighbors[t] = [];
-    for (const arr of edgeToTri.values()) {
-      if (arr.length === 2) {
-        const [t0, t1] = arr;
-        this.neighbors[t0].push(t1);
-        this.neighbors[t1].push(t0);
-      }
-    }
-		// Add neighbor edges from off-mesh links
-		for (const l of this._links) {
-			if (l.aTri >= 0 && l.bTri >= 0) {
-				this.neighbors[l.aTri].push(l.bTri);
-				if (l.bidirectional !== false) this.neighbors[l.bTri].push(l.aTri);
-			}
-		}
-  }
-
-  findPath(start, end, opts) {
-    if (!this._loaded || !this._grid) return [];
-    const startV = start instanceof Vector3 ? start : new Vector3(start?.x || 0, start?.y || 0, start?.z || 0);
-    const endV = end instanceof Vector3 ? end : new Vector3(end?.x || 0, end?.y || 0, end?.z || 0);
-    const startIdx = this._findClosestNodeForPosition(startV);
-    const endIdx = this._findClosestNodeForPosition(endV);
-    if (startIdx < 0 || endIdx < 0) return [];
-    const g = this._grid;
-
-    const open = new MinQueue();
-    const cameFrom = new Map();
-    const gScore = new Map();
-    const fScore = new Map();
-    gScore.set(startIdx, 0);
-    fScore.set(startIdx, this.heuristic(startIdx, endIdx));
-    open.push(startIdx, fScore.get(startIdx));
-    const closed = new Set();
-
-    while (!open.isEmpty()) {
-      const current = open.pop();
-      if (current === endIdx) {
-        const pathIdx = [current];
-        let cur = current;
-        while (cameFrom.has(cur)) {
-          cur = cameFrom.get(cur);
-          pathIdx.push(cur);
-        }
-        pathIdx.reverse();
-        const pts = [];
-        for (let k = 0; k < pathIdx.length; k++) {
-          const i = pathIdx[k];
-          const c = g.cells[i];
-          if (!c) continue;
-          const w = this._worldForIndex(i);
-          pts.push(new Vector3(w.x, c.y, w.z));
-        }
-        return (opts?.smooth ?? this._cfg.smooth) ? this._smoothPath(pts) : pts;
-      }
-      closed.add(current);
-      const neighbors = this._neighbors(current);
-      for (const nb of neighbors) {
-        const j = nb.j;
-        if (closed.has(j)) continue;
-        const tentative = (gScore.get(current) || Infinity) + nb.cost;
-        if (tentative < (gScore.get(j) || Infinity)) {
-          cameFrom.set(j, current);
-          gScore.set(j, tentative);
-          const f = tentative + this.heuristic(j, endIdx);
-          fScore.set(j, f);
-          open.push(j, f);
-        }
-      }
-    }
-    return [];
-  }
-
-  _findClosestNodeForPosition(p) {
-    const g = this._grid;
-    if (!g) return -1;
-    const center = this._cellIndexForXZ(p.x, p.z);
-    if (center >= 0 && g.cells[center]) return center;
-    const maxRing = 3;
-    for (let ring = 1; ring <= maxRing; ring++) {
-      for (let dz = -ring; dz <= ring; dz++) {
-        for (let dx = -ring; dx <= ring; dx++) {
-          if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
-          const xi = (center % g.nx) + dx;
-          const zi = ((center / g.nx) | 0) + dz;
-          if (xi < 0 || zi < 0 || xi >= g.nx || zi >= g.nz) continue;
-          const i = zi * g.nx + xi;
-          if (g.cells[i]) return i;
-        }
-      }
-    }
-    return -1;
-  }
-
-  // triangles A* removed (heightfield A* used instead)
-
-  // triangle funnel removed; simple smoothing used on grid paths
+  // (dead triangle-based code removed – heightfield A* at lines above is the active implementation)
 }
 
 // Helpers (triangle math removed for heightfield approach)
 
+/** Binary min-heap priority queue – O(log n) push/pop. */
 class MinQueue {
-  constructor() { this._arr = []; }
+  constructor() { this._h = []; }
   push(item, priority) {
-    this._arr.push({ item, priority });
-    let i = this._arr.length - 1;
-    while (i > 0 && this._arr[i].priority < this._arr[i - 1].priority) {
-      const tmp = this._arr[i]; this._arr[i] = this._arr[i - 1]; this._arr[i - 1] = tmp;
-      i--;
+    const h = this._h;
+    h.push({ item, priority });
+    let i = h.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (h[p].priority <= h[i].priority) break;
+      const tmp = h[i]; h[i] = h[p]; h[p] = tmp;
+      i = p;
     }
   }
   pop() {
-    const v = this._arr.shift();
-    return v ? v.item : undefined;
+    const h = this._h;
+    if (h.length === 0) return undefined;
+    const top = h[0].item;
+    const last = h.pop();
+    if (h.length > 0) {
+      h[0] = last;
+      let i = 0;
+      const n = h.length;
+      while (true) {
+        let smallest = i;
+        const l = 2 * i + 1, r = 2 * i + 2;
+        if (l < n && h[l].priority < h[smallest].priority) smallest = l;
+        if (r < n && h[r].priority < h[smallest].priority) smallest = r;
+        if (smallest === i) break;
+        const tmp = h[i]; h[i] = h[smallest]; h[smallest] = tmp;
+        i = smallest;
+      }
+    }
+    return top;
   }
-  isEmpty() { return this._arr.length === 0; }
+  isEmpty() { return this._h.length === 0; }
 }
 
 ComponentRegistry.register("NavMesh", NavMesh);

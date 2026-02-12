@@ -209,11 +209,11 @@ export class Agent extends Component {
     if (!goal) {
       this.controller.setMoveInput(0, 0, false, false);
       this.controller.fixedStep(app, dt);
-      // Even without goal, allow ranged logic to tick cooldown
-      this._tickRanged(dt, app, null);
+      this._fireCooldown = Math.max(0, this._fireCooldown - dt);
       return;
     }
-    // If navmesh is available and enabled, follow a path
+    // Determine movement target via navmesh or direct steering
+    let moveTarget = goal;
     if (this.useNavMesh && (this._nav || (this._nav = this.findComponent?.('NavMesh') || app?.navMesh || null))) {
       this._timeSinceRepath += dt;
       if (!this._path || this._timeSinceRepath >= this.repathInterval) {
@@ -221,27 +221,21 @@ export class Agent extends Component {
         this._pathIndex = 0;
         this._timeSinceRepath = 0;
       }
-      const nextPoint = this._nextWaypoint(goal);
-      const shouldAdvance = this._shouldAdvance(goal, app);
-      if (shouldAdvance) {
-        this._moveToward(nextPoint, dt, app);
-      } else {
-        this.controller.setMoveInput(0, 0, false, false);
-        this.controller.fixedStep(app, dt);
-      }
-      // Also tick ranged attack
-      this._tickRanged(dt, app, goal);
-      return;
+      moveTarget = this._nextWaypoint(goal);
     }
-    // Fallback: direct steering toward goal
     const shouldAdvance = this._shouldAdvance(goal, app);
     if (shouldAdvance) {
-      this._moveToward(goal, dt, app);
+      // Move toward waypoint/goal (handles facing movement direction + fixedStep)
+      this._moveToward(moveTarget, dt, app);
     } else {
+      // Stand still – face the attack target BEFORE stepping physics so facing
+      // is current when the projectile is spawned in the same frame.
+      this._faceToward(goal, dt);
       this.controller.setMoveInput(0, 0, false, false);
       this.controller.fixedStep(app, dt);
     }
-    this._tickRanged(dt, app, goal);
+    // Fire logic only (cooldown + shooting) – facing is handled above
+    this._tickRangedFire(dt, app, goal);
   }
 
   Update(dt /*, app */) {
@@ -298,32 +292,30 @@ export class Agent extends Component {
     this.controller.fixedStep(app, dt);
   }
 
-  _tickRanged(dt, app, goal) {
-    if (String(this.behavior).toLowerCase() !== 'ranged') {
-      this._fireCooldown = Math.max(0, this._fireCooldown - dt);
-      return;
-    }
-    this._fireCooldown -= dt;
-    const player = app?.player || null;
-    const rig = player?.rig || app?.rendererCore?.camera?.parent || null;
-    const targetPos = goal || (rig ? rig.position : null);
-    if (!targetPos) return;
-    // Face target
+  /** Turn toward a world position (horizontal only). */
+  _faceToward(targetPos, dt) {
     const to = targetPos.clone().sub(this.controller.position);
     to.y = 0;
     const dist = to.length();
-    if (dist > 1e-5) {
-      to.multiplyScalar(1 / dist);
-      const desiredYaw = Math.atan2(-to.x, -to.z);
-      const delta = wrapAngle(desiredYaw - this.controller.targetYaw);
-      const maxTurn = this.turnSpeed * dt;
-      const turn = Math.max(-maxTurn, Math.min(maxTurn, delta));
-      this.controller.setLookDelta(turn, 0);
-    }
+    if (dist < 1e-5) return;
+    to.multiplyScalar(1 / dist);
+    const desiredYaw = Math.atan2(-to.x, -to.z);
+    const delta = wrapAngle(desiredYaw - this.controller.targetYaw);
+    const maxTurn = this.turnSpeed * dt;
+    const turn = Math.max(-maxTurn, Math.min(maxTurn, delta));
+    this.controller.setLookDelta(turn, 0);
+  }
+
+  /** Tick ranged fire cooldown and shoot when ready. Facing is NOT handled here. */
+  _tickRangedFire(dt, app, goal) {
+    this._fireCooldown -= dt;
+    if (String(this.behavior).toLowerCase() !== 'ranged') return;
+    if (!goal) return;
+    const dist = horizontalDistance(this.controller.position, goal);
     if (dist > this.attackRange) return;
     if (this._fireCooldown > 0) return;
     this._fireCooldown = 1 / Math.max(0.01, this.fireRate);
-    this._shootProjectile(app, targetPos);
+    this._shootProjectile(app, goal);
   }
 
   _hasLineOfSight(targetPos, app) {
@@ -361,9 +353,9 @@ export class Agent extends Component {
   _shootProjectile(app, targetPos) {
     if (!app?.pool) return;
     let obj = null;
-    try { obj = app.pool.obtain(this.projectileArchetype, { overrides: { radius: 0.08, damage: this.projectileDamage, speed: this.projectileSpeed } }); } catch {}
+    try { obj = app.pool.obtain(this.projectileArchetype, { overrides: { radius: 0.08, damage: this.projectileDamage, speed: this.projectileSpeed } }); } catch (e) { console.warn('Agent: failed to obtain projectile from pool', e); }
     if (!obj) return;
-    try { app.rendererCore.scene.add(obj); } catch {}
+    try { app.rendererCore.scene.add(obj); } catch (e) { console.warn('Agent: failed to add projectile to scene', e); }
     // Find projectile component
     const comps = obj.__components || [];
     let proj = null;
@@ -378,9 +370,10 @@ export class Agent extends Component {
     try { this.object?.getWorldPosition?.(start); } catch {}
     if (!Number.isFinite(start.y)) start.copy(this.controller.position);
     start.y += 1.4;
-    // Aim directly toward the target (raise aim to approximate eye height if target is the rig)
+    // Aim toward the target; if target is at floor/rig level (well below muzzle),
+    // raise aim to approximate center-mass height (~1.0 m above floor).
     const aim = targetPos ? targetPos.clone() : start.clone().add(new Vector3(0, 0, -1));
-    if (aim && Math.abs(aim.y - start.y) < 0.5) aim.y += 1.6;
+    if (aim.y < start.y - 0.3) aim.y += 1.0;
     const dir = aim.clone().sub(start);
     if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
     dir.normalize();

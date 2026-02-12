@@ -116,10 +116,10 @@ export class Projectile extends Rigidbody {
 				}
 			}
 		}
-		// Player proximity damage (player is not a collider)
+		// Player proximity damage (player is not a physics collider)
 		const player = this.game?.player || null;
 		const rig = player?.rig || this.game?.rendererCore?.camera?.parent || null;
-		if (rig) {
+		if (rig && rig !== this._shooter) {
 			const dx = rig.position.x - cur.x;
 			const dy = (rig.position.y + (player?.controller?.eyeHeight || 1.6) * 0.5) - cur.y;
 			const dz = rig.position.z - cur.z;
@@ -165,6 +165,7 @@ export class Projectile extends Rigidbody {
 	}
 
 	_despawn() {
+		if (!this._active && this._ttl <= 0) return; // guard against double-despawn
 		this.reset();
 		// Return to pool if pooled
 		if (this.object?.userData?.__pooled && this.game?.pool) {
