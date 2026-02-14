@@ -213,6 +213,27 @@ export class Hierarchy {
         }
         break;
       }
+
+      case 'add-empty-child': {
+        const empty = new THREE.Object3D();
+        empty.name = 'Empty';
+        empty.userData = {};
+
+        // Add a small wireframe indicator for viewport selection
+        const geo = new THREE.OctahedronGeometry(0.15, 0);
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0xf9e2af, wireframe: true, transparent: true, opacity: 0.5,
+        });
+        const helper = new THREE.Mesh(geo, mat);
+        helper.name = '__emptyHelper';
+        empty.add(helper);
+
+        obj.add(empty);
+        this.viewport.select(empty);
+        this.rebuild();
+        for (const cb of this._onChanged) cb();
+        break;
+      }
     }
   }
 }

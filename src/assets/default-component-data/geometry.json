@@ -1,0 +1,234 @@
+{
+  "type": "Geometry",
+  "params": {
+    "shape": "box",
+    "width": 1,
+    "height": 1,
+    "depth": 1,
+    "radius": 0.5,
+    "radiusTop": 0.5,
+    "radiusBottom": 0.5,
+    "radialSegments": 32,
+    "widthSegments": 1,
+    "heightSegments": 1,
+    "depthSegments": 1,
+    "tube": 0.2,
+    "tubularSegments": 48,
+    "arc": 6.283185307179586,
+    "openEnded": false,
+    "innerRadius": 0.25,
+    "outerRadius": 0.5,
+    "detail": 0,
+    "wallShape": "T",
+    "thickness": 0.2
+  },
+  "paramDescriptions": [
+    {
+      "key": "shape",
+      "label": "Shape",
+      "type": "enum",
+      "options": [
+        "box",
+        "sphere",
+        "cylinder",
+        "cone",
+        "plane",
+        "torus",
+        "circle",
+        "ring",
+        "ramp",
+        "wall",
+        "dodecahedron",
+        "icosahedron",
+        "octahedron",
+        "tetrahedron"
+      ],
+      "description": "Geometry primitive type."
+    },
+    {
+      "key": "wallShape",
+      "label": "Wall Profile",
+      "type": "enum",
+      "options": ["T", "U", "cross", "L"],
+      "description": "Cross-section profile for parametric walls.",
+      "visibleWhen": { "shape": ["wall"] }
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "number",
+      "min": 0.01,
+      "max": 100,
+      "step": 0.01,
+      "description": "Width (X axis).",
+      "visibleWhen": { "shape": ["box", "plane", "ramp", "wall"] }
+    },
+    {
+      "key": "height",
+      "label": "Height",
+      "type": "number",
+      "min": 0.01,
+      "max": 100,
+      "step": 0.01,
+      "description": "Height (Y axis).",
+      "visibleWhen": { "shape": ["box", "cylinder", "cone", "plane", "ramp", "wall"] }
+    },
+    {
+      "key": "depth",
+      "label": "Depth",
+      "type": "number",
+      "min": 0.01,
+      "max": 100,
+      "step": 0.01,
+      "description": "Depth (Z axis).",
+      "visibleWhen": { "shape": ["box", "ramp", "wall"] }
+    },
+    {
+      "key": "thickness",
+      "label": "Wall Thickness",
+      "type": "number",
+      "min": 0.01,
+      "max": 50,
+      "step": 0.01,
+      "description": "Thickness of wall members.",
+      "visibleWhen": { "shape": ["wall"] }
+    },
+    {
+      "key": "radius",
+      "label": "Radius",
+      "type": "number",
+      "min": 0.01,
+      "max": 100,
+      "step": 0.01,
+      "description": "Radius.",
+      "visibleWhen": { "shape": ["sphere", "cone", "torus", "circle", "dodecahedron", "icosahedron", "octahedron", "tetrahedron"] }
+    },
+    {
+      "key": "radiusTop",
+      "label": "Radius Top",
+      "type": "number",
+      "min": 0,
+      "max": 100,
+      "step": 0.01,
+      "description": "Top radius.",
+      "visibleWhen": { "shape": ["cylinder"] }
+    },
+    {
+      "key": "radiusBottom",
+      "label": "Radius Bottom",
+      "type": "number",
+      "min": 0,
+      "max": 100,
+      "step": 0.01,
+      "description": "Bottom radius.",
+      "visibleWhen": { "shape": ["cylinder"] }
+    },
+    {
+      "key": "radialSegments",
+      "label": "Radial Segments",
+      "type": "number",
+      "min": 3,
+      "max": 128,
+      "step": 1,
+      "description": "Radial subdivisions.",
+      "visibleWhen": { "shape": ["cylinder", "cone", "torus", "circle", "ring"] }
+    },
+    {
+      "key": "widthSegments",
+      "label": "Width Segments",
+      "type": "number",
+      "min": 1,
+      "max": 128,
+      "step": 1,
+      "description": "Width subdivisions.",
+      "visibleWhen": { "shape": ["box", "plane", "sphere"] }
+    },
+    {
+      "key": "heightSegments",
+      "label": "Height Segments",
+      "type": "number",
+      "min": 1,
+      "max": 128,
+      "step": 1,
+      "description": "Height subdivisions.",
+      "visibleWhen": { "shape": ["box", "plane", "cylinder", "cone", "sphere"] }
+    },
+    {
+      "key": "depthSegments",
+      "label": "Depth Segments",
+      "type": "number",
+      "min": 1,
+      "max": 128,
+      "step": 1,
+      "description": "Depth subdivisions.",
+      "visibleWhen": { "shape": ["box"] }
+    },
+    {
+      "key": "tube",
+      "label": "Tube Radius",
+      "type": "number",
+      "min": 0.01,
+      "max": 50,
+      "step": 0.01,
+      "description": "Tube cross-section radius.",
+      "visibleWhen": { "shape": ["torus"] }
+    },
+    {
+      "key": "tubularSegments",
+      "label": "Tubular Segments",
+      "type": "number",
+      "min": 3,
+      "max": 256,
+      "step": 1,
+      "description": "Tubular subdivisions.",
+      "visibleWhen": { "shape": ["torus"] }
+    },
+    {
+      "key": "arc",
+      "label": "Arc (radians)",
+      "type": "number",
+      "min": 0.01,
+      "max": 6.29,
+      "step": 0.01,
+      "description": "Sweep angle in radians (6.28 = full circle).",
+      "visibleWhen": { "shape": ["torus"] }
+    },
+    {
+      "key": "openEnded",
+      "label": "Open Ended",
+      "type": "boolean",
+      "description": "Leave top/bottom open.",
+      "visibleWhen": { "shape": ["cylinder", "cone"] }
+    },
+    {
+      "key": "innerRadius",
+      "label": "Inner Radius",
+      "type": "number",
+      "min": 0.01,
+      "max": 100,
+      "step": 0.01,
+      "description": "Inner radius.",
+      "visibleWhen": { "shape": ["ring"] }
+    },
+    {
+      "key": "outerRadius",
+      "label": "Outer Radius",
+      "type": "number",
+      "min": 0.01,
+      "max": 100,
+      "step": 0.01,
+      "description": "Outer radius.",
+      "visibleWhen": { "shape": ["ring"] }
+    },
+    {
+      "key": "detail",
+      "label": "Detail",
+      "type": "number",
+      "min": 0,
+      "max": 5,
+      "step": 1,
+      "description": "Subdivision detail level.",
+      "visibleWhen": { "shape": ["dodecahedron", "icosahedron", "octahedron", "tetrahedron"] }
+    }
+  ]
+}

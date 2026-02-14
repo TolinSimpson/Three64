@@ -432,5 +432,93 @@ input[type="number"] { width: 64px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
+/* ===== Toolbar Dropdown ===== */
+.toolbar-dropdown {
+  position: relative;
+}
+.toolbar-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 0;
+  min-width: 150px;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.dropdown-item {
+  padding: 5px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.dropdown-item:hover {
+  background: var(--bg-hover);
+}
+.dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 0;
+}
+
+/* ===== Context Menu Divider ===== */
+.context-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 0;
+}
+
+/* ===== Section Label ===== */
+.section-label {
+  padding: 8px 4px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+/* ===== Read-Only Property ===== */
+.prop-readonly {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* ===== Material Group ===== */
+.inspector-group.material-group .inspector-group-header {
+  background: #2a2a40;
+}
+.inspector-group.material-group .inspector-group-header:hover {
+  background: var(--bg-hover);
+}
+.material-badge {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #363658;
+  color: var(--accent);
+  margin-right: 4px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.map-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+.map-tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-active);
+  color: var(--text-dim);
+}
+
 /* ===== Tooltip ===== */
 [title] { position: relative; }

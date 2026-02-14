@@ -1,10 +1,11 @@
 /**
  * inspector.js - Property inspector panel.
- * Shows name, transform, and component editors for the selected object.
+ * Shows name, transform, components, and material editors for the selected object.
  */
 import * as THREE from 'three';
 import { readComponents, writeComponents } from './userData.js';
 import { buildPropertyEditor } from './propertyEditor.js';
+import { syncGeometryPreview } from './geometryBuilder.js';
 
 export class Inspector {
   /**
@@ -69,6 +70,10 @@ export class Inspector {
 
     // --- Components ---
     this.container.appendChild(this._buildComponentsSection(obj));
+
+    // --- Materials ---
+    const matSection = this._buildMaterialSection(obj);
+    if (matSection) this.container.appendChild(matSection);
   }
 
   /** Refresh the inspector (e.g. after external changes) */
@@ -228,6 +233,11 @@ export class Inspector {
         }
         writeComponents(obj.userData, components);
         if (this.context) this.context.rebuild();
+
+        // Live geometry preview sync
+        if (comp.type === 'Geometry') {
+          syncGeometryPreview(obj, comp.params);
+        }
       }, this.context, comp.type);
 
       body.appendChild(editor);
@@ -284,6 +294,369 @@ export class Inspector {
     row.appendChild(sel);
     row.appendChild(customInput);
     row.appendChild(addBtn);
+    return row;
+  }
+
+  // ============================================================
+  // Materials
+  // ============================================================
+
+  _buildMaterialSection(obj) {
+    // Collect all unique materials from the object and its descendants
+    const materialEntries = new Map(); // uuid -> { material, meshNames[] }
+    obj.traverse((node) => {
+      if (!node.isMesh || !node.material) return;
+      if (node.name.startsWith('__')) return; // skip editor helpers
+      const mats = Array.isArray(node.material) ? node.material : [node.material];
+      for (const mat of mats) {
+        if (!materialEntries.has(mat.uuid)) {
+          materialEntries.set(mat.uuid, { material: mat, meshNames: [node.name || '<mesh>'] });
+        } else {
+          materialEntries.get(mat.uuid).meshNames.push(node.name || '<mesh>');
+        }
+      }
+    });
+
+    if (materialEntries.size === 0) return null;
+
+    const wrapper = document.createElement('div');
+
+    // Section label
+    const label = document.createElement('div');
+    label.className = 'section-label';
+    label.textContent = 'Materials';
+    wrapper.appendChild(label);
+
+    for (const [, { material, meshNames }] of materialEntries) {
+      const title = material.name || `Material (${meshNames[0]})`;
+      const group = this._makeMaterialGroup(title);
+      const body = group.querySelector('.inspector-group-body');
+
+      // Material type (read-only)
+      body.appendChild(this._makeReadOnlyRow('Type', material.type));
+
+      // --- Color ---
+      if (material.color) {
+        body.appendChild(this._makeMaterialColorRow('Color', material.color, () => {
+          material.needsUpdate = true;
+        }));
+      }
+
+      // --- Opacity ---
+      body.appendChild(this._makeMaterialSliderRow('Opacity', material.opacity ?? 1, 0, 1, 0.01, (v) => {
+        material.opacity = v;
+        material.transparent = v < 1;
+        material.needsUpdate = true;
+      }));
+
+      // --- Side ---
+      const sideVal = material.side === THREE.FrontSide ? 'FrontSide'
+        : material.side === THREE.BackSide ? 'BackSide' : 'DoubleSide';
+      body.appendChild(this._makeMaterialEnumRow('Side', sideVal,
+        ['FrontSide', 'BackSide', 'DoubleSide'], (v) => {
+          material.side = v === 'FrontSide' ? THREE.FrontSide
+            : v === 'BackSide' ? THREE.BackSide : THREE.DoubleSide;
+          material.needsUpdate = true;
+        }));
+
+      // --- Wireframe ---
+      body.appendChild(this._makeMaterialBoolRow('Wireframe', material.wireframe ?? false, (v) => {
+        material.wireframe = v;
+        material.needsUpdate = true;
+      }));
+
+      // --- MeshStandardMaterial / MeshPhysicalMaterial specific ---
+      if ('metalness' in material) {
+        body.appendChild(this._makeMaterialSliderRow('Metalness', material.metalness ?? 0, 0, 1, 0.01, (v) => {
+          material.metalness = v;
+          material.needsUpdate = true;
+        }));
+      }
+
+      if ('roughness' in material) {
+        body.appendChild(this._makeMaterialSliderRow('Roughness', material.roughness ?? 1, 0, 1, 0.01, (v) => {
+          material.roughness = v;
+          material.needsUpdate = true;
+        }));
+      }
+
+      if (material.emissive) {
+        body.appendChild(this._makeMaterialColorRow('Emissive', material.emissive, () => {
+          material.needsUpdate = true;
+        }));
+      }
+
+      if ('emissiveIntensity' in material) {
+        body.appendChild(this._makeMaterialSliderRow('Emissive Intensity', material.emissiveIntensity ?? 1, 0, 10, 0.01, (v) => {
+          material.emissiveIntensity = v;
+          material.needsUpdate = true;
+        }));
+      }
+
+      if ('flatShading' in material) {
+        body.appendChild(this._makeMaterialBoolRow('Flat Shading', material.flatShading ?? false, (v) => {
+          material.flatShading = v;
+          material.needsUpdate = true;
+        }));
+      }
+
+      // --- Visible ---
+      body.appendChild(this._makeMaterialBoolRow('Visible', material.visible ?? true, (v) => {
+        material.visible = v;
+      }));
+
+      // --- Texture maps (read-only info) ---
+      const maps = [];
+      if (material.map) maps.push('Diffuse');
+      if (material.normalMap) maps.push('Normal');
+      if (material.roughnessMap) maps.push('Roughness');
+      if (material.metalnessMap) maps.push('Metalness');
+      if (material.emissiveMap) maps.push('Emissive');
+      if (material.aoMap) maps.push('AO');
+      if (material.alphaMap) maps.push('Alpha');
+      if (material.bumpMap) maps.push('Bump');
+      if (material.displacementMap) maps.push('Displacement');
+      if (material.envMap) maps.push('Environment');
+
+      if (maps.length > 0) {
+        body.appendChild(this._makeMapInfoRow('Texture Maps', maps));
+      }
+
+      wrapper.appendChild(group);
+    }
+
+    return wrapper;
+  }
+
+  // --- Material row helpers ---
+
+  _makeMaterialGroup(title) {
+    const group = document.createElement('div');
+    group.className = 'inspector-group material-group';
+
+    const header = document.createElement('div');
+    header.className = 'inspector-group-header';
+
+    const arrow = document.createElement('span');
+    arrow.className = 'collapse-arrow';
+    arrow.textContent = '\u25BC';
+    header.appendChild(arrow);
+
+    const badge = document.createElement('span');
+    badge.className = 'material-badge';
+    badge.textContent = 'MAT';
+    header.appendChild(badge);
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'group-title';
+    titleEl.textContent = title;
+    header.appendChild(titleEl);
+
+    const body = document.createElement('div');
+    body.className = 'inspector-group-body';
+
+    header.addEventListener('click', () => {
+      const collapsed = body.classList.toggle('collapsed');
+      arrow.classList.toggle('collapsed', collapsed);
+    });
+
+    group.appendChild(header);
+    group.appendChild(body);
+    return group;
+  }
+
+  _makeMaterialColorRow(label, threeColor, onChange) {
+    const row = document.createElement('div');
+    row.className = 'prop-row';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'prop-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    const valDiv = document.createElement('div');
+    valDiv.className = 'prop-value';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'color-row';
+
+    const hexStr = '#' + threeColor.getHexString();
+
+    const picker = document.createElement('input');
+    picker.type = 'color';
+    picker.value = hexStr;
+
+    const hexInput = document.createElement('input');
+    hexInput.type = 'text';
+    hexInput.value = hexStr;
+    hexInput.style.width = '80px';
+    hexInput.style.fontFamily = 'var(--font-mono)';
+    hexInput.style.fontSize = '11px';
+
+    picker.addEventListener('input', () => {
+      const hex = parseInt(picker.value.slice(1), 16);
+      hexInput.value = picker.value;
+      threeColor.setHex(hex);
+      onChange();
+    });
+
+    hexInput.addEventListener('change', () => {
+      let val = hexInput.value.trim();
+      if (!val.startsWith('#')) val = '#' + val;
+      const hex = parseInt(val.replace('#', ''), 16);
+      if (!isNaN(hex)) {
+        picker.value = '#' + hex.toString(16).padStart(6, '0');
+        threeColor.setHex(hex);
+        onChange();
+      }
+    });
+
+    wrapper.appendChild(picker);
+    wrapper.appendChild(hexInput);
+    valDiv.appendChild(wrapper);
+    row.appendChild(valDiv);
+    return row;
+  }
+
+  _makeMaterialSliderRow(label, value, min, max, step, onChange) {
+    const row = document.createElement('div');
+    row.className = 'prop-row';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'prop-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    const valDiv = document.createElement('div');
+    valDiv.className = 'prop-value';
+
+    const sliderDiv = document.createElement('div');
+    sliderDiv.className = 'slider-row';
+
+    const range = document.createElement('input');
+    range.type = 'range';
+    range.min = min;
+    range.max = max;
+    range.step = step;
+    range.value = value;
+
+    const num = document.createElement('input');
+    num.type = 'number';
+    num.min = min;
+    num.max = max;
+    num.step = step;
+    num.value = parseFloat(Number(value).toFixed(3));
+
+    range.addEventListener('input', () => {
+      num.value = parseFloat(Number(range.value).toFixed(3));
+      onChange(parseFloat(range.value));
+    });
+    num.addEventListener('change', () => {
+      range.value = num.value;
+      onChange(parseFloat(num.value));
+    });
+
+    sliderDiv.appendChild(range);
+    sliderDiv.appendChild(num);
+    valDiv.appendChild(sliderDiv);
+    row.appendChild(valDiv);
+    return row;
+  }
+
+  _makeMaterialBoolRow(label, value, onChange) {
+    const row = document.createElement('div');
+    row.className = 'prop-row';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'prop-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    const valDiv = document.createElement('div');
+    valDiv.className = 'prop-value';
+
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.checked = !!value;
+    chk.addEventListener('change', () => onChange(chk.checked));
+
+    valDiv.appendChild(chk);
+    row.appendChild(valDiv);
+    return row;
+  }
+
+  _makeMaterialEnumRow(label, value, options, onChange) {
+    const row = document.createElement('div');
+    row.className = 'prop-row';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'prop-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    const valDiv = document.createElement('div');
+    valDiv.className = 'prop-value';
+
+    const sel = document.createElement('select');
+    for (const opt of options) {
+      const o = document.createElement('option');
+      o.value = opt;
+      o.textContent = opt;
+      if (opt === value) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change', () => onChange(sel.value));
+
+    valDiv.appendChild(sel);
+    row.appendChild(valDiv);
+    return row;
+  }
+
+  _makeReadOnlyRow(label, value) {
+    const row = document.createElement('div');
+    row.className = 'prop-row';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'prop-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    const valDiv = document.createElement('div');
+    valDiv.className = 'prop-value';
+
+    const span = document.createElement('span');
+    span.className = 'prop-readonly';
+    span.textContent = value;
+
+    valDiv.appendChild(span);
+    row.appendChild(valDiv);
+    return row;
+  }
+
+  _makeMapInfoRow(label, mapNames) {
+    const row = document.createElement('div');
+    row.className = 'prop-row';
+    row.style.alignItems = 'flex-start';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'prop-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    const valDiv = document.createElement('div');
+    valDiv.className = 'prop-value';
+
+    const list = document.createElement('div');
+    list.className = 'map-list';
+    for (const name of mapNames) {
+      const tag = document.createElement('span');
+      tag.className = 'map-tag';
+      tag.textContent = name;
+      list.appendChild(tag);
+    }
+
+    valDiv.appendChild(list);
+    row.appendChild(valDiv);
     return row;
   }
 

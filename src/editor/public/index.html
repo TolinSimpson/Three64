@@ -31,6 +31,29 @@
       <input type="number" id="snap-rotate" value="15" step="5" min="1" title="Rotate snap (deg)" class="snap-input">
       <input type="number" id="snap-scale" value="0.1" step="0.05" min="0.01" title="Scale snap" class="snap-input">
     </div>
+    <div class="toolbar-separator"></div>
+    <div class="toolbar-group">
+      <div class="toolbar-dropdown">
+        <button id="btn-add" title="Add object to scene (Shift+A)">Add &#x25BE;</button>
+        <div id="add-menu" class="toolbar-dropdown-menu" style="display:none;">
+          <div class="dropdown-item" data-add="empty">Empty</div>
+          <div class="dropdown-divider"></div>
+          <div class="dropdown-item" data-add="box">Box</div>
+          <div class="dropdown-item" data-add="sphere">Sphere</div>
+          <div class="dropdown-item" data-add="cylinder">Cylinder</div>
+          <div class="dropdown-item" data-add="cone">Cone</div>
+          <div class="dropdown-item" data-add="plane">Plane</div>
+          <div class="dropdown-item" data-add="torus">Torus</div>
+          <div class="dropdown-item" data-add="ramp">Ramp</div>
+          <div class="dropdown-item" data-add="wall">Wall (T/U/L/+)</div>
+          <div class="dropdown-divider"></div>
+          <div class="dropdown-item" data-add="circle">Circle</div>
+          <div class="dropdown-item" data-add="ring">Ring</div>
+          <div class="dropdown-item" data-add="icosahedron">Icosahedron</div>
+          <div class="dropdown-item" data-add="dodecahedron">Dodecahedron</div>
+        </div>
+      </div>
+    </div>
     <div class="toolbar-spacer"></div>
     <div class="toolbar-group">
       <span id="status-text" class="status-text">Three64 Editor</span>
@@ -71,6 +94,8 @@
     <div class="context-item" data-action="duplicate">Duplicate</div>
     <div class="context-item" data-action="rename">Rename</div>
     <div class="context-item" data-action="delete">Delete</div>
+    <div class="context-divider"></div>
+    <div class="context-item" data-action="add-empty-child">Add Empty Child</div>
   </div>
 
   <!-- Save dialog (hidden by default) -->

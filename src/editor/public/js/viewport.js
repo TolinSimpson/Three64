@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { buildGeometry, createDefaultMaterial, getDefaultGeoParams } from './geometryBuilder.js';
 
 export class Viewport {
   constructor(canvas) {
@@ -189,6 +190,53 @@ export class Viewport {
     this.select(null);
   }
 
+  // --- Object creation ---
+
+  /**
+   * Create and add an empty Object3D to the scene.
+   * Includes a small wireframe indicator for viewport selection.
+   * @param {string} [name='Empty']
+   * @returns {THREE.Object3D}
+   */
+  addEmpty(name) {
+    const obj = new THREE.Object3D();
+    obj.name = name || 'Empty';
+    obj.userData = {};
+
+    // Small wireframe indicator so empties can be clicked in the viewport.
+    // Name starts with __ so it's stripped on GLTF export.
+    const geo = new THREE.OctahedronGeometry(0.15, 0);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xf9e2af, wireframe: true, transparent: true, opacity: 0.5,
+    });
+    const helper = new THREE.Mesh(geo, mat);
+    helper.name = '__emptyHelper';
+    obj.add(helper);
+
+    this.sceneRoot.add(obj);
+    this.select(obj);
+    return obj;
+  }
+
+  /**
+   * Create and add a primitive mesh to the scene with a Geometry component.
+   * @param {string} shape - e.g. 'box', 'sphere', 'cylinder'
+   * @returns {THREE.Mesh}
+   */
+  addPrimitive(shape) {
+    const params = getDefaultGeoParams(shape);
+    const geo = buildGeometry(params);
+    const mat = createDefaultMaterial();
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = shape.charAt(0).toUpperCase() + shape.slice(1);
+    mesh.userData = {
+      components: [{ type: 'Geometry', params: { ...params } }],
+    };
+    this.sceneRoot.add(mesh);
+    this.select(mesh);
+    return mesh;
+  }
+
   /** Duplicate selected object */
   duplicateSelected() {
     if (!this.selectedObject) return null;
@@ -318,7 +366,13 @@ export class Viewport {
     if (!this.selectedObject) return;
 
     const box = new THREE.Box3().setFromObject(this.selectedObject);
-    if (box.isEmpty()) return;
+    if (box.isEmpty()) {
+      // For empties / nodes with no real geometry, show a small indicator
+      const center = new THREE.Vector3();
+      this.selectedObject.getWorldPosition(center);
+      const size = 0.3;
+      box.setFromCenterAndSize(center, new THREE.Vector3(size, size, size));
+    }
     const helper = new THREE.Box3Helper(box, 0x89b4fa);
     helper.name = '__selectionBox';
     this._selectionBox = helper;

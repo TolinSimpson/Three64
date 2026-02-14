@@ -12,6 +12,10 @@
  *   - Arrays of primitives get add/remove list editors
  *   - Color type renders a colour picker + hex integer display
  *   - SceneContext-hinted fields render combo-box dropdowns with scene data
+ *   - visibleWhen: conditional visibility driven by enum values
+ *       { "key": "width", "visibleWhen": { "shape": ["box", "plane"] } }
+ *       Keys map to param keys; values are arrays of allowed values.
+ *       Multiple conditions are AND-ed.
  */
 import { resolveHint } from './sceneContext.js';
 
@@ -67,6 +71,11 @@ export function buildPropertyEditor(params, paramDescriptions, onChange, context
     }
   }
 
+  // --- visibleWhen: track live values for conditional visibility ---
+  const liveValues = new Map();
+  for (const [k, v] of flatParams) liveValues.set(k, v);
+  const conditionalRows = []; // { row: HTMLElement, condition: object }
+
   for (const key of orderedKeys) {
     if (suppressedParents.has(key)) continue;
     const desc = descMap.get(key);
@@ -82,10 +91,38 @@ export function buildPropertyEditor(params, paramDescriptions, onChange, context
     }
 
     const row = createPropertyRow(key, value, desc, (newVal) => {
+      liveValues.set(key, newVal);
       onChange(key, newVal);
+      // Re-evaluate conditional visibility after every change
+      if (conditionalRows.length > 0) updateVisibility();
     }, hintOptions);
+
+    // Track rows that have a visibleWhen condition
+    if (desc?.visibleWhen && typeof desc.visibleWhen === 'object') {
+      conditionalRows.push({ row, condition: desc.visibleWhen });
+    }
+
     container.appendChild(row);
   }
+
+  // --- Visibility evaluation ---
+  function updateVisibility() {
+    for (const { row, condition } of conditionalRows) {
+      let visible = true;
+      for (const [condKey, allowedValues] of Object.entries(condition)) {
+        const currentVal = liveValues.get(condKey);
+        if (Array.isArray(allowedValues)) {
+          if (!allowedValues.includes(currentVal)) { visible = false; break; }
+        } else {
+          if (currentVal !== allowedValues) { visible = false; break; }
+        }
+      }
+      row.style.display = visible ? '' : 'none';
+    }
+  }
+
+  // Apply initial visibility
+  if (conditionalRows.length > 0) updateVisibility();
 
   // If no keys at all, show a JSON fallback for the entire params
   if (orderedKeys.length === 0 || (orderedKeys.length === suppressedParents.size)) {

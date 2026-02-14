@@ -41,9 +41,14 @@ export class Toolbar {
     this.saveConfirm = document.getElementById('save-confirm');
     this.saveCancel = document.getElementById('save-cancel');
 
+    // Add menu
+    this.btnAdd = document.getElementById('btn-add');
+    this.addMenu = document.getElementById('add-menu');
+
     this._bindButtons();
     this._bindKeyboard();
     this._bindSnap();
+    this._bindAddMenu();
   }
 
   setStatus(msg) {
@@ -111,8 +116,56 @@ export class Toolbar {
             this._showSaveDialog();
           }
           break;
+        case 'a':
+          if (e.shiftKey) {
+            e.preventDefault();
+            if (this.addMenu) {
+              this.addMenu.style.display = this.addMenu.style.display === 'block' ? 'none' : 'block';
+            }
+          }
+          break;
       }
     });
+  }
+
+  _bindAddMenu() {
+    if (!this.btnAdd || !this.addMenu) return;
+
+    // Toggle dropdown on button click
+    this.btnAdd.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const visible = this.addMenu.style.display === 'block';
+      this.addMenu.style.display = visible ? 'none' : 'block';
+    });
+
+    // Handle item clicks
+    this.addMenu.addEventListener('click', (e) => {
+      const item = e.target.closest('[data-add]');
+      if (!item) return;
+      const type = item.dataset.add;
+      this._addObject(type);
+      this.addMenu.style.display = 'none';
+    });
+
+    // Close on outside click
+    document.addEventListener('pointerdown', (e) => {
+      if (!this.btnAdd.contains(e.target) && !this.addMenu.contains(e.target)) {
+        this.addMenu.style.display = 'none';
+      }
+    });
+  }
+
+  _addObject(type) {
+    let obj;
+    if (type === 'empty') {
+      obj = this.viewport.addEmpty();
+      this.setStatus('Added Empty');
+    } else {
+      obj = this.viewport.addPrimitive(type);
+      this.setStatus(`Added ${type.charAt(0).toUpperCase() + type.slice(1)}`);
+    }
+    this.hierarchy.rebuild();
+    this.inspector.inspect(obj);
   }
 
   _bindSnap() {
