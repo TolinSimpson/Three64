@@ -1,4 +1,5 @@
 'use strict';
+import { Vector3 } from "three";
 import { Inventory } from "./inventory.js";
 import { Statistic } from "./statistic.js";
 
@@ -233,6 +234,151 @@ ActionRegistry.register("RequestRespawn", {
 		const gm = ctx?.game?.gameMode;
 		if (gm && typeof gm.requestRespawn === "function") {
 			gm.requestRespawn(params.playerId || 0);
+		}
+	}
+});
+
+ActionRegistry.register("SpawnFromPool", {
+	label: "Spawn From Pool",
+	params: ["archetype", "target", "overrides", "traits", "position", "objectName"],
+	handler: async (ctx, params) => {
+		const game = ctx?.game;
+		const pool = game?.pool;
+		const scene = game?.rendererCore?.scene;
+		if (!pool || !scene) return;
+		const archetype = (params.archetype || "").toString().trim();
+		if (!archetype) return;
+		const obj = resolveTargetObject(ctx, params.target || "self");
+		const overrides = params.overrides && typeof params.overrides === "object" ? params.overrides : {};
+		const traits = params.traits && typeof params.traits === "object" ? params.traits : {};
+		const inst = pool.obtain(archetype, { overrides, traits });
+		if (!inst) return;
+		const pos = params.position;
+		if (pos && (typeof pos.x === "number" || Array.isArray(pos))) {
+			const v = Array.isArray(pos) ? pos : [pos.x, pos.y ?? 0, pos.z ?? 0];
+			inst.position.set(Number(v[0]) || 0, Number(v[1]) || 0, Number(v[2]) || 0);
+		} else if (obj?.getWorldPosition) {
+			obj.getWorldPosition(inst.position);
+		}
+		scene.add(inst);
+	}
+});
+
+ActionRegistry.register("FireProjectile", {
+	label: "Fire Projectile",
+	params: ["archetype", "direction", "speed", "target"],
+	handler: async (ctx, params) => {
+		const game = ctx?.game;
+		const pool = game?.pool;
+		const scene = game?.rendererCore?.scene;
+		if (!pool || !scene) return;
+		const archetype = (params.archetype || "Projectile").toString().trim() || "Projectile";
+		const obj = resolveTargetObject(ctx, params.target || "self");
+		if (!obj) return;
+		const inst = pool.obtain(archetype, {});
+		if (!inst) return;
+		scene.add(inst);
+		const dir = params.direction;
+		let dx = 0, dy = 0, dz = 1;
+		if (Array.isArray(dir)) {
+			dx = Number(dir[0]) || 0; dy = Number(dir[1]) || 0; dz = Number(dir[2]) || 1;
+		} else if (dir && typeof dir === "object") {
+			dx = Number(dir.x) ?? 0; dy = Number(dir.y) ?? 0; dz = Number(dir.z) ?? 1;
+		}
+		const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+		dx /= len; dy /= len; dz /= len;
+		const dirVec = new Vector3(dx, dy, dz);
+		const pos = obj.getWorldPosition ? obj.getWorldPosition(new Vector3()) : new Vector3().copy(obj.position);
+		const proj = findComponentOnObject(inst, "Projectile");
+		if (proj && typeof proj.fire === "function") {
+			proj.reset?.();
+			proj.fire({
+				position: pos instanceof Vector3 ? pos : new Vector3(pos?.x || 0, pos?.y || 0, pos?.z || 0),
+				direction: dirVec,
+				speed: Number(params.speed) || proj.speed,
+				shooter: obj,
+			});
+		}
+	}
+});
+
+ActionRegistry.register("EmitParticles", {
+	label: "Emit Particles",
+	params: ["count", "scale", "target", "position"],
+	handler: async (ctx, params) => {
+		const game = ctx?.game;
+		const ps = game?.particleSystem;
+		if (!ps || typeof ps.spawn !== "function") return;
+		const obj = resolveTargetObject(ctx, params.target || "self");
+		const count = Math.max(1, Math.floor(Number(params.count) || 1));
+		const scale = Math.max(0.01, Number(params.scale) || 1);
+		let pos = params.position;
+		let v;
+		if (!pos && obj?.getWorldPosition) {
+			v = obj.getWorldPosition(new Vector3());
+		} else if (Array.isArray(pos)) {
+			v = new Vector3(Number(pos[0]) || 0, Number(pos[1]) ?? 0, Number(pos[2]) ?? 0);
+		} else if (pos && typeof pos === "object") {
+			v = new Vector3(Number(pos.x) ?? 0, Number(pos.y) ?? 0, Number(pos.z) ?? 0);
+		} else {
+			return;
+		}
+		for (let i = 0; i < count; i++) {
+			ps.spawn(v, scale);
+		}
+	}
+});
+
+ActionRegistry.register("SetVisible", {
+	label: "Set Visible",
+	params: ["target", "visible", "objectName"],
+	handler: async (ctx, params) => {
+		const t = (params.target || "self").toString();
+		const obj = t === "byName" ? resolveTargetObject(ctx, params.objectName || "") : resolveTargetObject(ctx, params.target || "self");
+		if (!obj) return;
+		const v = params.visible;
+		obj.visible = v === true || v === "true" || v === 1 || v === "1";
+	}
+});
+
+ActionRegistry.register("EmitEvent", {
+	label: "Emit Event",
+	params: ["event", "payload"],
+	handler: async (ctx, params) => {
+		const ev = (params.event || "").toString();
+		if (!ev) return;
+		const payload = params.payload && typeof params.payload === "object" ? params.payload : {};
+		ctx?.game?.eventSystem?.emit?.(ev, payload);
+	}
+});
+
+ActionRegistry.register("SequencerControl", {
+	label: "Sequencer Control",
+	params: ["target", "sequencerName", "action", "objectName", "time"],
+	handler: async (ctx, params) => {
+		const t = (params.target || "self").toString();
+		let seq = null;
+		const want = (params.sequencerName || "").toString().replace(/\s+/g, "").toLowerCase();
+		const obj = t === "byName" ? resolveTargetObject(ctx, params.objectName || "") : resolveTargetObject(ctx, params.target || "self");
+		if (obj?.__components) {
+			for (const c of obj.__components) {
+				if ((c?.constructor?.name || "").toString().toLowerCase() === "sequencer") {
+					const n = (c.options?.name || "").toString().replace(/\s+/g, "").toLowerCase();
+					if (n === want || !want) { seq = c; break; }
+				}
+			}
+		}
+		if (!seq && want) seq = ctx?.game?.sequencers?.get(want) || null;
+		if (!seq) return;
+		const action = (params.action || "").toString().toLowerCase();
+		switch (action) {
+			case "play":   seq.play();   break;
+			case "pause":  seq.pause();  break;
+			case "resume": seq.resume(); break;
+			case "stop":   seq.stop();   break;
+			case "reset":  seq.reset();  break;
+			case "seek":   seq.seek(Number(params.time) || 0); break;
+			default: break;
 		}
 	}
 });

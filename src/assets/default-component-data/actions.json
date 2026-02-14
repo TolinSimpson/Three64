@@ -1,0 +1,16 @@
+[
+  {"id": "AddItem", "label": "Add Item", "params": ["target", "item"]},
+  {"id": "ModifyStatistic", "label": "Modify Statistic", "params": ["name", "op", "value", "duration", "easing", "keepRatio", "target"]},
+  {"id": "SendComponentMessage", "label": "Send Component Message", "params": ["target", "component", "method", "args", "objectName"]},
+  {"id": "AdvanceMatchState", "label": "Advance Match State", "params": []},
+  {"id": "SetAnimState", "label": "Set Animation State", "params": ["target", "state"]},
+  {"id": "NetworkAction", "label": "Send Network Action", "params": ["action", "params"]},
+  {"id": "RequestRespawn", "label": "Request Respawn", "params": ["playerId"]},
+  {"id": "TimerControl", "label": "Timer Control", "params": ["target", "timerName", "action"]},
+  {"id": "SpawnFromPool", "label": "Spawn From Pool", "params": ["archetype", "target", "overrides", "traits", "position", "objectName"]},
+  {"id": "FireProjectile", "label": "Fire Projectile", "params": ["archetype", "direction", "speed", "target"]},
+  {"id": "EmitParticles", "label": "Emit Particles", "params": ["count", "scale", "target", "position"]},
+  {"id": "SetVisible", "label": "Set Visible", "params": ["target", "visible", "objectName"]},
+  {"id": "EmitEvent", "label": "Emit Event", "params": ["event", "payload"]},
+  {"id": "SequencerControl", "label": "Sequencer Control", "params": ["target", "sequencerName", "action", "objectName", "time"]}
+]

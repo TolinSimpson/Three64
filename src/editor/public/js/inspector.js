@@ -18,6 +18,7 @@ export class Inspector {
     this.viewport = viewport;
     this.context = context || null;
     this.componentDefs = [];  // loaded from /api/components
+    this.actions = [];       // loaded from /api/components (actions.json)
     this._currentObject = null;
 
     // Listen for selection changes
@@ -37,6 +38,7 @@ export class Inspector {
       const res = await fetch('/api/components');
       const data = await res.json();
       this.componentDefs = data.components || [];
+      this.actions = data.actions || [];
 
       // Populate SceneContext with component type list and do initial scan
       if (this.context) {
@@ -238,7 +240,7 @@ export class Inspector {
         if (comp.type === 'Geometry') {
           syncGeometryPreview(obj, comp.params);
         }
-      }, this.context, comp.type);
+      }, this.context, comp.type, { actions: this.actions });
 
       body.appendChild(editor);
       wrapper.appendChild(group);

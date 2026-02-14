@@ -1,0 +1,25 @@
+{
+  "type": "Sequencer",
+  "params": {
+    "name": "sequencer",
+    "autoStart": false,
+    "loop": false,
+    "reverse": false,
+    "duration": 10,
+    "steps": [],
+    "triggerEvents": [],
+    "phase": "update",
+    "onComplete": ""
+  },
+  "paramDescriptions": [
+    {"key": "name", "label": "Name", "type": "string", "description": "Unique identifier for this sequencer."},
+    {"key": "autoStart", "label": "Auto Start", "type": "boolean", "description": "Start playing immediately on Initialize."},
+    {"key": "loop", "label": "Loop", "type": "boolean", "description": "Restart from beginning when sequence completes."},
+    {"key": "reverse", "label": "Reverse", "type": "boolean", "description": "Play backwards (decrement time)."},
+    {"key": "duration", "label": "Duration (s)", "type": "number", "min": 0, "step": 0.5, "description": "Total sequence length in seconds."},
+    {"key": "steps", "label": "Steps", "type": "object", "description": "Array of { time, action: { type, params }, delay?, randomDelay?, repeat? }. Actions: ModifyStatistic, SpawnFromPool, FireProjectile, SendComponentMessage, SetVisible, EmitEvent, etc."},
+    {"key": "triggerEvents", "label": "Trigger Events", "type": "object", "description": "Event names that start playback when emitted."},
+    {"key": "phase", "label": "Phase", "type": "enum", "options": ["input", "fixed", "update", "late"], "description": "Game loop phase to run the sequencer."},
+    {"key": "onComplete", "label": "On Complete", "type": "string", "description": "Event name or action config when sequence completes (non-loop)."}
+  ]
+}

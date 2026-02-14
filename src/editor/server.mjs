@@ -110,12 +110,25 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/api/components') {
     try {
+      const actions = [];
+      if (existsSync(COMP_DATA_DIR)) {
+        const actionsPath = path.join(COMP_DATA_DIR, 'actions.json');
+        if (existsSync(actionsPath)) {
+          try {
+            const raw = await readFile(actionsPath, 'utf-8');
+            actions.push(...(JSON.parse(raw) || []));
+          } catch (e) {
+            console.warn('Skipping actions.json:', e.message);
+          }
+        }
+      }
+
       if (!existsSync(COMP_DATA_DIR)) {
-        json(res, 200, { components: [] });
+        json(res, 200, { components: [], actions });
         return;
       }
       const files = await readdir(COMP_DATA_DIR);
-      const jsonFiles = files.filter(f => f.endsWith('.json'));
+      const jsonFiles = files.filter(f => f.endsWith('.json') && f !== 'actions.json');
       const components = [];
       for (const f of jsonFiles) {
         try {
@@ -131,7 +144,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
       components.sort((a, b) => a.type.localeCompare(b.type));
-      json(res, 200, { components });
+      json(res, 200, { components, actions });
     } catch (err) {
       console.error('GET /api/components error:', err);
       json(res, 500, { error: 'Failed to list components' });

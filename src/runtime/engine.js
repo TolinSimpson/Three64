@@ -31,6 +31,7 @@ import "./networkState.js";
 import "./gameMode.js";
 import "./behaviorFSM.js";
 import "./spawnPoint.js";
+import "./sequencer.js";
 import { MainMenu } from "./mainMenu.js";
 import { SettingsMenu } from "./settingsMenu.js";
 import { Input } from "./input.js";
@@ -313,6 +314,7 @@ export async function createApp() {
   app.gameMode = null;
   app.spawnPoints = [];
   app.timers = new Map();
+  app.sequencers = new Map();
 
   // Component index: typeName -> [components] for fast findComponent/findComponents
   app._componentIndex = new Map();

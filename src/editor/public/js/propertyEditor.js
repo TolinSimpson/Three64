@@ -18,6 +18,7 @@
  *       Multiple conditions are AND-ed.
  */
 import { resolveHint } from './sceneContext.js';
+import { buildSequencerStepsEditor } from './sequencerStepsEditor.js';
 
 // ============================================================
 // Public entry point
@@ -31,9 +32,10 @@ import { resolveHint } from './sceneContext.js';
  * @param {Function} onChange          Called with (key, value) when a property changes
  * @param {import('./sceneContext.js').SceneContext} [context] Scene context for hinted dropdowns
  * @param {string}   [componentType]  Component type name (e.g. "Volume") for hint resolution
+ * @param {object}   [options]        Optional { actions } for Sequencer steps editor
  * @returns {HTMLElement}
  */
-export function buildPropertyEditor(params, paramDescriptions, onChange, context, componentType) {
+export function buildPropertyEditor(params, paramDescriptions, onChange, context, componentType, options) {
   const container = document.createElement('div');
   container.className = 'inspector-group-body';
 
@@ -80,6 +82,18 @@ export function buildPropertyEditor(params, paramDescriptions, onChange, context
     if (suppressedParents.has(key)) continue;
     const desc = descMap.get(key);
     const value = flatParams.has(key) ? flatParams.get(key) : getNestedValue(params, key);
+
+    // Sequencer steps: use stack-based editor
+    if (componentType === 'Sequencer' && key === 'steps') {
+      const row = buildSequencerStepsEditor(
+        value,
+        (newVal) => { onChange(key, newVal); },
+        options?.actions,
+        context
+      );
+      container.appendChild(row);
+      continue;
+    }
 
     // Resolve context hints for this param
     let hintOptions = null;

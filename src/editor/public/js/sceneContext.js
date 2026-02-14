@@ -23,6 +23,8 @@ export class SceneContext {
     /** @type {string[]} */ this.archetypeNames  = [];
     /** @type {string[]} */ this.objectNames     = [];
     /** @type {string[]} */ this.tagNames        = [];
+    /** @type {string[]} */ this.sequencerNames  = [];
+    /** @type {string[]} */ this.targetOptions   = ['self', 'player', 'byName'];
   }
 
   /**
@@ -40,6 +42,7 @@ export class SceneContext {
     const archetypes = new Set(['Projectile']);  // known engine default
     const names      = new Set();
     const tags       = new Set();
+    const sequencers = new Set();
 
     const root = this.viewport.sceneRoot;
     if (!root) return;
@@ -61,6 +64,11 @@ export class SceneContext {
           stats.add(p.name);
         }
 
+        // Sequencer names
+        if (comp.type === 'Sequencer' && p.name) {
+          sequencers.add(p.name);
+        }
+
         // Walk all params for events, archetypes, tags
         this._collectFromParams(p, events, archetypes, tags);
       }
@@ -71,6 +79,7 @@ export class SceneContext {
     this.archetypeNames  = [...archetypes].sort();
     this.objectNames     = [...names].sort();
     this.tagNames        = [...tags].sort();
+    this.sequencerNames  = [...sequencers].sort();
   }
 
   /**
@@ -147,6 +156,12 @@ export function resolveHint(componentType, key, desc) {
 
   // *Tag or tags
   if (/Tag$/i.test(key) || key === 'tags') return 'tagNames';
+
+  // Sequencer / event-related
+  if (key === 'event') return 'eventNames';
+  if (key === 'archetype') return 'archetypeNames';
+  if (key === 'sequencerName') return 'sequencerNames';
+  if (key === 'target') return 'targetOptions';
 
   return null;
 }
