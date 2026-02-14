@@ -9,11 +9,49 @@
     "respawnInterval": 0
   },
   "paramDescriptions": [
-    { "key": "tags",            "label": "Tags",              "type": "string",  "description": "Comma-separated tags." },
-    { "key": "team",            "label": "Team",              "type": "number",  "min": -1, "step": 1, "description": "Team restriction (-1 = any)." },
-    { "key": "cooldown",        "label": "Cooldown (s)",      "type": "number",  "min": 0, "step": 0.5, "description": "Seconds before reuse." },
-    { "key": "radius",          "label": "Jitter Radius (m)", "type": "number",  "min": 0, "step": 0.1, "description": "Random offset radius." },
-    { "key": "itemArchetype",   "label": "Item Archetype",    "type": "string",  "description": "Archetype to spawn here." },
-    { "key": "respawnInterval", "label": "Respawn Interval",  "type": "number",  "min": 0, "step": 1, "description": "Seconds between item respawns." }
+    {
+      "key": "tags",
+      "label": "Tags",
+      "type": "string",
+      "description": "Comma-separated tags, e.g. \"SpawnPoint,TeamRed\"."
+    },
+    {
+      "key": "team",
+      "label": "Team",
+      "type": "number",
+      "min": -1,
+      "step": 1,
+      "description": "Team restriction (-1 = any team)."
+    },
+    {
+      "key": "cooldown",
+      "label": "Cooldown (s)",
+      "type": "number",
+      "min": 0,
+      "step": 0.5,
+      "description": "Seconds before this point can be reused."
+    },
+    {
+      "key": "radius",
+      "label": "Jitter Radius (m)",
+      "type": "number",
+      "min": 0,
+      "step": 0.1,
+      "description": "Random offset radius for spawn position."
+    },
+    {
+      "key": "itemArchetype",
+      "label": "Item Archetype",
+      "type": "string",
+      "description": "If set, GameMode spawns this archetype here."
+    },
+    {
+      "key": "respawnInterval",
+      "label": "Respawn Interval",
+      "type": "number",
+      "min": 0,
+      "step": 1,
+      "description": "Seconds between item respawns (0 = once)."
+    }
   ]
 }

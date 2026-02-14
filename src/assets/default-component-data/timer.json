@@ -12,14 +12,61 @@
     "persist": false
   },
   "paramDescriptions": [
-    { "key": "name",       "label": "Name",         "type": "string",  "description": "Unique identifier for this timer." },
-    { "key": "duration",   "label": "Duration (s)",  "type": "number",  "min": 0, "step": 1, "description": "Duration in seconds." },
-    { "key": "direction",  "label": "Direction",     "type": "string",  "description": "down = countdown, up = countup." },
-    { "key": "autoStart",  "label": "Auto Start",    "type": "boolean", "description": "Start ticking on Initialize." },
-    { "key": "loop",       "label": "Loop",          "type": "boolean", "description": "Reset and restart on completion." },
-    { "key": "thresholds", "label": "Thresholds",    "type": "object",  "description": "Array of { value, event } objects." },
-    { "key": "scope",      "label": "Scope",         "type": "string",  "description": "Forwarded to internal Statistic." },
-    { "key": "sync",       "label": "Sync",          "type": "string",  "description": "Forwarded to internal Statistic." },
-    { "key": "persist",    "label": "Persist",       "type": "boolean", "description": "Forwarded to internal Statistic." }
+    {
+      "key": "name",
+      "label": "Name",
+      "type": "string",
+      "description": "Unique identifier for this timer (also used as the internal Statistic name)."
+    },
+    {
+      "key": "duration",
+      "label": "Duration (s)",
+      "type": "number",
+      "min": 0,
+      "step": 1,
+      "description": "Duration in seconds. For countdown: start value. For countup: target/max."
+    },
+    {
+      "key": "direction",
+      "label": "Direction",
+      "type": "string",
+      "description": "\"down\" for countdown, \"up\" for countup."
+    },
+    {
+      "key": "autoStart",
+      "label": "Auto Start",
+      "type": "boolean",
+      "description": "If true, starts ticking immediately on Initialize."
+    },
+    {
+      "key": "loop",
+      "label": "Loop",
+      "type": "boolean",
+      "description": "If true, resets and restarts when complete."
+    },
+    {
+      "key": "thresholds",
+      "label": "Thresholds",
+      "type": "object",
+      "description": "Array of { value, event } objects. Events emitted when value crosses threshold."
+    },
+    {
+      "key": "scope",
+      "label": "Scope",
+      "type": "string",
+      "description": "Forwarded to internal Statistic: \"object\", \"global\", or \"local\"."
+    },
+    {
+      "key": "sync",
+      "label": "Sync",
+      "type": "string",
+      "description": "Forwarded to internal Statistic: \"none\", \"authoritative\", or \"replicated\"."
+    },
+    {
+      "key": "persist",
+      "label": "Persist",
+      "type": "boolean",
+      "description": "Forwarded to internal Statistic."
+    }
   ]
 }

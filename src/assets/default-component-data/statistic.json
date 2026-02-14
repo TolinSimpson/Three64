@@ -13,15 +13,69 @@
     "persist": false
   },
   "paramDescriptions": [
-    { "key": "name",        "label": "Name",      "type": "string",  "description": "Unique identifier for this statistic." },
-    { "key": "min",         "label": "Min",        "type": "number",  "step": 1, "description": "Minimum value." },
-    { "key": "max",         "label": "Max",        "type": "number",  "step": 1, "description": "Maximum value." },
-    { "key": "current",     "label": "Current",    "type": "number",  "step": 1, "description": "Starting value." },
-    { "key": "regenPerSec", "label": "Regen/sec",  "type": "number",  "step": 0.1, "description": "Passive regen (positive) or drain (negative) per second." },
-    { "key": "clamp",       "label": "Clamp",      "type": "boolean", "description": "Clamp value between min and max." },
-    { "key": "easing",      "label": "Easing",     "type": "string",  "description": "Default easing for over-time deltas." },
-    { "key": "scope",       "label": "Scope",      "type": "string",  "description": "object = local, global = game.statistics registry, local = excluded from network sync." },
-    { "key": "sync",        "label": "Sync",       "type": "string",  "description": "none = no network, authoritative = broadcasts, replicated = receives." },
-    { "key": "persist",     "label": "Persist",    "type": "boolean", "description": "Include in save/load serialization." }
+    {
+      "key": "name",
+      "label": "Name",
+      "type": "string",
+      "description": "Unique identifier for this statistic."
+    },
+    {
+      "key": "min",
+      "label": "Min",
+      "type": "number",
+      "step": 1,
+      "description": "Minimum value."
+    },
+    {
+      "key": "max",
+      "label": "Max",
+      "type": "number",
+      "step": 1,
+      "description": "Maximum value."
+    },
+    {
+      "key": "current",
+      "label": "Current",
+      "type": "number",
+      "step": 1,
+      "description": "Starting value."
+    },
+    {
+      "key": "regenPerSec",
+      "label": "Regen/sec",
+      "type": "number",
+      "step": 0.1,
+      "description": "Passive regen (positive) or drain (negative) per second."
+    },
+    {
+      "key": "clamp",
+      "label": "Clamp",
+      "type": "boolean",
+      "description": "Clamp value between min and max."
+    },
+    {
+      "key": "easing",
+      "label": "Easing",
+      "type": "string",
+      "description": "Default easing for over-time deltas (linear, easeInQuad, easeOutQuad, easeInOutCubic)."
+    },
+    {
+      "key": "scope",
+      "label": "Scope",
+      "type": "string",
+      "description": "\"object\" = local to this object, \"global\" = registered in game.statistics by name, \"local\" = excluded from network sync."
+    },
+    {
+      "key": "sync",
+      "label": "Sync",
+      "type": "string",
+      "description": "\"none\" = no network, \"authoritative\" = this client owns & broadcasts, \"replicated\" = receives from network."
+    },
+    {
+      "key": "persist",
+      "label": "Persist",
+      "type": "boolean",
+      "description": "Include in save/load serialization."
+    }
   ]
 }

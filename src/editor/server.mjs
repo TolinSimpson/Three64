@@ -1,6 +1,6 @@
-import express from 'express';
+import http from 'node:http';
 import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, createReadStream } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,95 +13,163 @@ const THREE_DIR = path.join(PROJECT_ROOT, 'node_modules/three');
 
 const PORT = parseInt(process.env.EDITOR_PORT || '3664', 10);
 
-const app = express();
+const MIME = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.glb': 'model/gltf-binary',
+  '.gltf': 'model/gltf+json',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
 
-// --- Static serving ---
+const staticRoots = [
+  { prefix: '/three/addons/', dir: path.join(THREE_DIR, 'examples/jsm') },
+  { prefix: '/three/', dir: path.join(THREE_DIR, 'build') },
+  { prefix: '/models/', dir: MODELS_DIR },
+  { prefix: '/', dir: EDITOR_PUBLIC },
+];
 
-// Editor frontend
-app.use('/', express.static(EDITOR_PUBLIC));
+function getMime(ext) {
+  return MIME[ext?.toLowerCase()] || 'application/octet-stream';
+}
 
-// Three.js from node_modules (for ES module imports in the browser)
-app.use('/three/', express.static(path.join(THREE_DIR, 'build')));
-app.use('/three/addons/', express.static(path.join(THREE_DIR, 'examples/jsm')));
-
-// Model files
-app.use('/models/', express.static(MODELS_DIR));
-
-// --- API ---
-
-// List available GLTF/GLB models
-app.get('/api/models', async (_req, res) => {
-  try {
-    if (!existsSync(MODELS_DIR)) {
-      await mkdir(MODELS_DIR, { recursive: true });
+function serveStatic(url, res) {
+  for (const { prefix, dir } of staticRoots) {
+    if (!url.startsWith(prefix) || !existsSync(dir)) continue;
+    const subpath = url === prefix ? 'index.html' : url.slice(prefix.length);
+    const filepath = path.join(dir, subpath.replace(/\.\./g, ''));
+    if (!filepath.startsWith(dir)) {
+      res.writeHead(403);
+      res.end();
+      return true;
     }
-    const files = await readdir(MODELS_DIR);
-    const models = files.filter(f => /\.(glb|gltf)$/i.test(f));
-    res.json({ models });
-  } catch (err) {
-    console.error('GET /api/models error:', err);
-    res.status(500).json({ error: 'Failed to list models' });
+    if (!existsSync(filepath)) continue;
+    try {
+      const ext = path.extname(filepath);
+      const stream = createReadStream(filepath);
+      res.setHeader('Content-Type', getMime(ext));
+      stream.pipe(res);
+      return true;
+    } catch (_) {
+      continue;
+    }
   }
-});
+  return false;
+}
 
-// List available components with params and descriptions
-app.get('/api/components', async (_req, res) => {
-  try {
-    if (!existsSync(COMP_DATA_DIR)) {
-      res.json({ components: [] });
-      return;
-    }
-    const files = await readdir(COMP_DATA_DIR);
-    const jsonFiles = files.filter(f => f.endsWith('.json'));
-    const components = [];
-    for (const f of jsonFiles) {
-      try {
-        const raw = await readFile(path.join(COMP_DATA_DIR, f), 'utf-8');
-        const data = JSON.parse(raw);
-        components.push({
-          type: data.type || f.replace('.json', ''),
-          params: data.params || {},
-          paramDescriptions: data.paramDescriptions || [],
-        });
-      } catch (e) {
-        console.warn(`Skipping ${f}:`, e.message);
+function json(res, status, data) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(data));
+}
+
+function readBody(req, limit = 100 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let len = 0;
+    req.on('data', (chunk) => {
+      len += chunk.length;
+      if (len > limit) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+        return;
       }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url || '/', `http://localhost`);
+  const pathname = url.pathname;
+
+  // --- API ---
+  if (pathname === '/api/models') {
+    try {
+      if (!existsSync(MODELS_DIR)) {
+        await mkdir(MODELS_DIR, { recursive: true });
+      }
+      const files = await readdir(MODELS_DIR);
+      const models = files.filter(f => /\.(glb|gltf)$/i.test(f));
+      json(res, 200, { models });
+    } catch (err) {
+      console.error('GET /api/models error:', err);
+      json(res, 500, { error: 'Failed to list models' });
     }
-    // Sort alphabetically by type
-    components.sort((a, b) => a.type.localeCompare(b.type));
-    res.json({ components });
-  } catch (err) {
-    console.error('GET /api/components error:', err);
-    res.status(500).json({ error: 'Failed to list components' });
+    return;
   }
+
+  if (pathname === '/api/components') {
+    try {
+      if (!existsSync(COMP_DATA_DIR)) {
+        json(res, 200, { components: [] });
+        return;
+      }
+      const files = await readdir(COMP_DATA_DIR);
+      const jsonFiles = files.filter(f => f.endsWith('.json'));
+      const components = [];
+      for (const f of jsonFiles) {
+        try {
+          const raw = await readFile(path.join(COMP_DATA_DIR, f), 'utf-8');
+          const data = JSON.parse(raw);
+          components.push({
+            type: data.type || f.replace('.json', ''),
+            params: data.params || {},
+            paramDescriptions: data.paramDescriptions || [],
+          });
+        } catch (e) {
+          console.warn(`Skipping ${f}:`, e.message);
+        }
+      }
+      components.sort((a, b) => a.type.localeCompare(b.type));
+      json(res, 200, { components });
+    } catch (err) {
+      console.error('GET /api/components error:', err);
+      json(res, 500, { error: 'Failed to list components' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/save-gltf' && req.method === 'POST') {
+    try {
+      const filename = url.searchParams.get('filename') || 'scene.glb';
+      const safe = path.basename(String(filename));
+      if (!safe || !/\.(glb|gltf)$/i.test(safe)) {
+        json(res, 400, { error: 'Invalid filename. Must end with .glb or .gltf' });
+        return;
+      }
+      const body = await readBody(req);
+      if (!existsSync(MODELS_DIR)) {
+        await mkdir(MODELS_DIR, { recursive: true });
+      }
+      const dest = path.join(MODELS_DIR, safe);
+      await writeFile(dest, body);
+      console.log(`Saved ${safe} (${body.length} bytes)`);
+      json(res, 200, { ok: true, path: dest });
+    } catch (err) {
+      console.error('POST /api/save-gltf error:', err);
+      json(res, 500, { error: err.message || 'Failed to save file' });
+    }
+    return;
+  }
+
+  // --- Static ---
+  if (serveStatic(pathname, res)) return;
+
+  res.writeHead(404);
+  res.end('Not found');
 });
 
-// Save GLB to disk
-app.post('/api/save-gltf', express.raw({ type: 'application/octet-stream', limit: '100mb' }), async (req, res) => {
-  try {
-    const filename = req.query.filename || 'scene.glb';
-    // Sanitize filename
-    const safe = path.basename(String(filename));
-    if (!safe || !/\.(glb|gltf)$/i.test(safe)) {
-      res.status(400).json({ error: 'Invalid filename. Must end with .glb or .gltf' });
-      return;
-    }
-    if (!existsSync(MODELS_DIR)) {
-      await mkdir(MODELS_DIR, { recursive: true });
-    }
-    const dest = path.join(MODELS_DIR, safe);
-    await writeFile(dest, req.body);
-    console.log(`Saved ${safe} (${req.body.length} bytes)`);
-    res.json({ ok: true, path: dest });
-  } catch (err) {
-    console.error('POST /api/save-gltf error:', err);
-    res.status(500).json({ error: 'Failed to save file' });
-  }
-});
-
-// --- Start ---
-
-const server = app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Three64 Editor running at http://localhost:${PORT}`);
 });
 

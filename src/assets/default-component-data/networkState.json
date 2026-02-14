@@ -2,17 +2,51 @@
   "type": "NetworkState",
   "params": {
     "syncProperties": [
-      { "path": "position",   "strategy": "interpolate", "rate": 20 },
-      { "path": "rotation.y", "strategy": "interpolate", "rate": 20 }
+      {
+        "path": "position",
+        "strategy": "interpolate",
+        "rate": 20
+      },
+      {
+        "path": "rotation.y",
+        "strategy": "interpolate",
+        "rate": 20
+      }
     ],
     "ownership": "local",
     "interpolationSpeed": 10,
     "syncRate": 20
   },
   "paramDescriptions": [
-    { "key": "syncProperties",     "label": "Sync Properties",     "type": "object",  "description": "Array of { path, strategy, rate, source }." },
-    { "key": "ownership",          "label": "Ownership",           "type": "string",  "description": "local = sends, remote = receives, authority = server decides." },
-    { "key": "interpolationSpeed", "label": "Interpolation Speed", "type": "number",  "min": 1, "max": 60, "step": 1, "description": "Default lerp factor." },
-    { "key": "syncRate",           "label": "Sync Rate (Hz)",      "type": "number",  "min": 1, "max": 60, "step": 1, "description": "Default sends per second." }
+    {
+      "key": "syncProperties",
+      "label": "Sync Properties",
+      "type": "object",
+      "description": "Array of { path, strategy, rate, source }. Strategy: \"interpolate\", \"snap\", or \"predict\"."
+    },
+    {
+      "key": "ownership",
+      "label": "Ownership",
+      "type": "string",
+      "description": "\"local\" = this client sends, \"remote\" = receives, \"authority\" = server decides."
+    },
+    {
+      "key": "interpolationSpeed",
+      "label": "Interpolation Speed",
+      "type": "number",
+      "min": 1,
+      "max": 60,
+      "step": 1,
+      "description": "Default lerp factor for interpolate strategy."
+    },
+    {
+      "key": "syncRate",
+      "label": "Sync Rate (Hz)",
+      "type": "number",
+      "min": 1,
+      "max": 60,
+      "step": 1,
+      "description": "Default sends per second."
+    }
   ]
 }
