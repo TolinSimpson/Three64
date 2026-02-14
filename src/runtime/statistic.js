@@ -39,8 +39,8 @@ export class Statistic extends Component {
 
     const name = this._getName();
 
-    // Register in global statistics map if scope is "global"
-    if (this.options.scope === 'global' && this.game?.statistics) {
+    // Register in global statistics map: scope "global" OR scene-level (object is null)
+    if (this.game?.statistics && (this.options.scope === 'global' || !this.object)) {
       this.game.statistics.set(name, this);
     }
 
@@ -78,7 +78,7 @@ export class Statistic extends Component {
   Dispose() {
     // Unregister from global statistics map
     const name = this._getName();
-    if (this.options?.scope === 'global' && this.game?.statistics) {
+    if (this.game?.statistics && (this.options?.scope === 'global' || !this.object)) {
       if (this.game.statistics.get(name) === this) {
         this.game.statistics.delete(name);
       }

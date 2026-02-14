@@ -26,10 +26,12 @@ Base class for all gameplay logic.
 - `triggerConfiguredEvent(key, payload?)`: Alias for `onEvent`.
 
 **Query Helpers:**
-- `getComponent(typeOrName)`: Find sibling component on the same object.
+- `getComponent(typeOrName)`: Find sibling component on the same object. O(m) where m = components on object.
 - `getComponents(typeOrName)`: Find all sibling components on the same object.
-- `findComponent(typeOrName)`: Find first matching component globally.
-- `findComponents(typeOrName)`: Find all matching components globally.
+- `findComponent(typeOrName)`: Find first matching component globally. O(1) for string lookup via component index.
+- `findComponents(typeOrName)`: Find all matching components globally. O(1) for string lookup via component index.
+
+**Component Index (internal):** All components must be added via `game.addComponent()`. The engine maintains `_componentIndex: Map<typeName, Component[]>` for O(1) lookup by type name. Constructor lookups (`findComponent(Player)`) still iterate; string lookups (`findComponent("Player")`) use the index.
 
 **Serialization:**
 - `Serialize()`: Returns `{ type, objectId, data }`.

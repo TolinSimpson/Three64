@@ -101,6 +101,9 @@ export class GameMode extends Component {
       }
     }
 
+    // Register for O(1) lookup (events, etc.)
+    if (this.game) this.game.gameMode = this;
+
     // Enter initial state (first key in matchStates)
     const firstState = Object.keys(this._matchStates)[0];
     if (firstState) {
@@ -109,6 +112,7 @@ export class GameMode extends Component {
   }
 
   Dispose() {
+    if (this.game?.gameMode === this) this.game.gameMode = null;
     for (const unsub of this._eventUnsubs) {
       try { unsub(); } catch {}
     }
@@ -239,16 +243,9 @@ export class GameMode extends Component {
   }
 
   _findSpawnPoints(tag) {
-    const comps = this.game?.componentInstances || [];
-    const result = [];
-    for (const c of comps) {
-      if (c?.constructor?.name === 'SpawnPoint' && typeof c.hasTag === 'function') {
-        if (c.hasTag(tag)) {
-          result.push(c);
-        }
-      }
-    }
-    return result;
+    const list = this.game?.spawnPoints;
+    if (!Array.isArray(list)) return [];
+    return list.filter((c) => c && c.game && typeof c.hasTag === "function" && c.hasTag(tag));
   }
 }
 

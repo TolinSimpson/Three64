@@ -586,8 +586,7 @@ export class SceneLoader {
           const instance = new ctor({ game: this.game, object: o, options: c.params, propName: c.type });
           if (instance) {
             try { o.__components = o.__components || []; o.__components.push(instance); } catch {}
-            if (this.game.addComponent) this.game.addComponent(instance);
-            else this.game.componentInstances.push(instance);
+            this.game.addComponent(instance);
             created.push(instance);
           }
           if (instance && typeof instance.Initialize === "function") {

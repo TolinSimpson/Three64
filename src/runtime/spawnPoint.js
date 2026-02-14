@@ -36,6 +36,16 @@ export class SpawnPoint extends Component {
     this._tags = [];
     const raw = (this.options?.tags || 'SpawnPoint').toString();
     this._tags = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (this.game?.spawnPoints) this.game.spawnPoints.push(this);
+  }
+
+  Dispose() {
+    const arr = this.game?.spawnPoints;
+    if (Array.isArray(arr)) {
+      const i = arr.indexOf(this);
+      if (i >= 0) arr.splice(i, 1);
+    }
+    super.Dispose?.();
   }
 
   Update(dt) {

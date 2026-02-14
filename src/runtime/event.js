@@ -71,13 +71,10 @@ function resolveTargetObject(ctx, target) {
 		return ctx?.object || null;
 	}
 	if (t === "player") {
-		// Prefer the first Player component's object
-		const comps = ctx?.component?.findComponents ? ctx.component.findComponents("Player") : (ctx?.game?.componentInstances || []);
-		if (Array.isArray(comps) && comps.length) {
-			const c = comps[0];
-			return c?.object || null;
-		}
-		// Fallback: try scene property if defined by engine
+		const p = ctx?.game?.player;
+		if (p?.object) return p.object;
+		const comps = ctx?.component?.findComponents ? ctx.component.findComponents("Player") : [];
+		if (Array.isArray(comps) && comps.length) return comps[0]?.object || null;
 		try { return ctx?.game?.sceneProperties?.player?.[0] || null; } catch {}
 	}
 	// Named object via scene
@@ -193,13 +190,9 @@ ActionRegistry.register("AdvanceMatchState", {
 	label: "Advance Match State",
 	params: [],
 	handler: async (ctx) => {
-		// Find GameMode component in the scene
-		const comps = ctx?.game?.componentInstances || [];
-		for (const c of comps) {
-			if (c?.constructor?.name === 'GameMode' && typeof c.advanceState === 'function') {
-				c.advanceState();
-				return;
-			}
+		const gm = ctx?.game?.gameMode;
+		if (gm && typeof gm.advanceState === "function") {
+			gm.advanceState();
 		}
 	}
 });
@@ -237,12 +230,9 @@ ActionRegistry.register("RequestRespawn", {
 	label: "Request Respawn",
 	params: ["playerId"],
 	handler: async (ctx, params) => {
-		const comps = ctx?.game?.componentInstances || [];
-		for (const c of comps) {
-			if (c?.constructor?.name === 'GameMode' && typeof c.requestRespawn === 'function') {
-				c.requestRespawn(params.playerId || 0);
-				return;
-			}
+		const gm = ctx?.game?.gameMode;
+		if (gm && typeof gm.requestRespawn === "function") {
+			gm.requestRespawn(params.playerId || 0);
 		}
 	}
 });
@@ -252,29 +242,17 @@ ActionRegistry.register("TimerControl", {
 	params: ["target", "timerName", "action"],
 	handler: async (ctx, params) => {
 		const obj = resolveTargetObject(ctx, params.target || "self");
-		// Find timer on the target object, or search scene
 		let timer = null;
-		if (obj) {
-			const comps = obj.__components || [];
-			for (const c of comps) {
-				if (c?.constructor?.name === 'Timer') {
-					const n = (c.options?.name || '').toString().replace(/\s+/g, '').toLowerCase();
-					const want = (params.timerName || '').toString().replace(/\s+/g, '').toLowerCase();
+		const want = (params.timerName || "").toString().replace(/\s+/g, "").toLowerCase();
+		if (obj?.__components) {
+			for (const c of obj.__components) {
+				if (c?.constructor?.name === "Timer") {
+					const n = (c.options?.name || "").toString().replace(/\s+/g, "").toLowerCase();
 					if (n === want) { timer = c; break; }
 				}
 			}
 		}
-		// Fallback: search all components
-		if (!timer) {
-			const allComps = ctx?.game?.componentInstances || [];
-			const want = (params.timerName || '').toString().replace(/\s+/g, '').toLowerCase();
-			for (const c of allComps) {
-				if (c?.constructor?.name === 'Timer') {
-					const n = (c.options?.name || '').toString().replace(/\s+/g, '').toLowerCase();
-					if (n === want) { timer = c; break; }
-				}
-			}
-		}
+		if (!timer && ctx?.game?.timers) timer = ctx.game.timers.get(want);
 		if (!timer) return;
 		const action = (params.action || '').toString().toLowerCase();
 		switch (action) {

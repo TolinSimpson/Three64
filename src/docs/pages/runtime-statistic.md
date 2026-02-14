@@ -50,7 +50,7 @@ const health = new Statistic({
   propName: "Statistic",
 });
 health.Initialize?.();
-game.componentInstances.push(health);
+game.addComponent(health);
 
 const healthBar = new StatisticBar({
   game,
@@ -59,7 +59,7 @@ const healthBar = new StatisticBar({
   propName: "StatisticBar",
 });
 await Promise.resolve(healthBar.Initialize?.());
-game.componentInstances.push(healthBar);
+game.addComponent(healthBar);
 ```
 
 Multiple statistics can coexist (e.g., `power`, `gold`) by creating additional `Statistic`/`StatisticBar` pairs with distinct `name` values.

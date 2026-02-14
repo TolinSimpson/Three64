@@ -27,7 +27,7 @@ const power = new Statistic({
   propName: "Statistic",
 });
 power.Initialize?.();
-game.componentInstances.push(power);
+game.addComponent(power);
 
 const powerBar = new StatisticBar({
   game,
@@ -36,7 +36,7 @@ const powerBar = new StatisticBar({
   propName: "StatisticBar",
 });
 await Promise.resolve(powerBar.Initialize?.());
-game.componentInstances.push(powerBar);
+game.addComponent(powerBar);
 ```
 
 To change the value over time with easing:

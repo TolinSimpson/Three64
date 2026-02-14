@@ -104,7 +104,7 @@ export function ensurePoolSingleton(game) {
 	const inst = new Pool({ game, object: null, options: Pool.getDefaultParams(), propName: "Pool" });
 	try {
 		inst.Initialize?.();
-		game.componentInstances.push(inst);
+		game.addComponent(inst);
 	} catch {}
 	return inst;
 }

@@ -135,16 +135,26 @@ export class Projectile extends Rigidbody {
 	}
 
 	_damageStatistic(name, amount) {
-		const comps = this.game?.componentInstances || [];
-		for (let i = 0; i < comps.length; i++) {
-			const c = comps[i];
-			if (!c) continue;
-			const n = (c.options?.name || c.propName || c.constructor?.name || "").toString().toLowerCase();
-			if (n !== "statistic" && n !== name && (c._getName?.() !== name)) continue;
-			// Prefer Statistic components named 'health'
-			if (typeof c.add === "function" && (c._getName?.() === name || c.options?.name === name)) {
-				c.add(-Math.abs(amount || 0));
-				return true;
+		const key = String(name || "").replace(/[\s\-_]/g, "").toLowerCase();
+		// O(1): use statistics registry (global + scene-level stats)
+		const stat = this.game?.statistics?.get(key);
+		if (stat && typeof stat.add === "function") {
+			stat.add(-Math.abs(amount || 0));
+			return true;
+		}
+		// Fallback: object-scoped stat on player (e.g. health on player rig)
+		const player = this.game?.player;
+		const obj = player?.rig || player?.object || null;
+		if (obj?.__components) {
+			for (const c of obj.__components) {
+				if (!c) continue;
+				const isStat = (c.constructor?.name === "Statistic") || (c.propName === "Statistic");
+				if (!isStat || typeof c.add !== "function") continue;
+				const n = (c.options?.name || c.propName || "").toString().replace(/[\s\-_]/g, "").toLowerCase();
+				if (n === key) {
+					c.add(-Math.abs(amount || 0));
+					return true;
+				}
 			}
 		}
 		return false;
@@ -198,7 +208,7 @@ ArchetypeRegistry.register("Projectile", {
 		const comp = new Projectile({ game, object: obj, options: params || {}, propName: "Projectile" });
 		obj.__components = obj.__components || [];
 		obj.__components.push(comp);
-		game.componentInstances.push(comp);
+		game.addComponent(comp);
 		comp.Initialize?.();
 		return obj;
 	}

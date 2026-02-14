@@ -25,19 +25,33 @@ Three64 is a small, component-oriented runtime designed around:
 - `eventSystem.js`: Lightweight event bus.
 - `debug.js`: HUD, budget overlays, CLI, and dev toggles.
 
-## Third‑party libraries
+## Third-party libraries
 - Three.js: Rendering. See docs: https://threejs.org/docs
 - Ammo.js: Physics. See docs: https://github.com/kripken/ammo.js
 - Webpack 5: Build tooling. See docs: https://webpack.js.org/concepts/
 
 Integration notes:
-- Physics is optional; guard your code if you don’t include Ammo.
-- Production builds minify and tree‑shake to keep runtime lean.
+- Physics is optional; guard your code if you don't include Ammo.
+- Production builds minify and tree-shake to keep runtime lean.
 
-## Where it’s implemented (from README)
+## Component lookups and registries
+
+For performant hot-path lookups, the engine uses registries instead of scanning `componentInstances`:
+
+| Registry | Type | Populated by | Use |
+|----------|------|--------------|-----|
+| `app._componentIndex` | `Map<typeName, Component[]>` | `addComponent` / `removeComponent` | O(1) `findComponent("Type")` |
+| `app.statistics` | `Map<name, Statistic>` | `Statistic.Initialize` (scope `global` or `object === null`) | O(1) stat lookup by name |
+| `app.gameMode` | `GameMode` | `GameMode.Initialize` | `AdvanceMatchState`, `RequestRespawn` actions |
+| `app.spawnPoints` | `SpawnPoint[]` | `SpawnPoint.Initialize` | `GameMode._findSpawnPoints` |
+| `app.timers` | `Map<name, Timer>` | `Timer.Initialize` | `TimerControl` action |
+| `app.player` | `Player` | `Player.Initialize` | Player camera, input |
+| `app.navMesh` | `NavMesh` | `NavMesh.Initialize` | Pathfinding |
+
+**Critical:** All components must be registered via `game.addComponent()`. Direct `componentInstances.push` bypasses the index and update phase lists.
+
+## Where it's implemented (from README)
 - Naming/prefix handling: `src/runtime/assetLoader.js` (`_processNamingConventions`)
 - Components from IDs (manifest): `src/runtime/assetLoader.js` (`_instantiateProperties`)
 - Components from userData (registry): `src/runtime/assetLoader.js` (`_instantiateFromUserData`)
 - Fallback behaviors (colliders, default scene/assets) are handled in `assetLoader.js` with bootstrap in `engine.js`.
-
-

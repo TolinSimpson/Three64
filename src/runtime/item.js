@@ -200,7 +200,7 @@ export class Item extends Component {
     try {
       this.object.__components = this.object.__components || [];
       this.object.__components.push(comp);
-      this.game.componentInstances.push(comp);
+      this.game.addComponent(comp);
       comp.Initialize?.();
     } catch {}
   }

@@ -752,8 +752,8 @@ function cmdAddComponent(args) {
     if (!instance) { log('addcomp: failed to construct'); return; }
     o.__components = o.__components || [];
     o.__components.push(instance);
-    getGame().componentInstances.push(instance);
-    if (typeof instance.Initialize === 'function') Promise.resolve(instance.Initialize()).catch(() => {});
+    getGame().addComponent(instance);
+    if (typeof instance.Initialize === "function") Promise.resolve(instance.Initialize()).catch(() => {});
     log(`addcomp: attached ${typeName}`);
   } catch (e) {
     log(`addcomp: error ${e?.message || e}`);
@@ -767,19 +767,7 @@ function cmdRemoveComponent(args) {
   const typeName = args[0];
   const inst = resolveComponentOnSelected(typeName);
   if (!inst) { log(`rmcomp: not found '${typeName}' on selection`); return; }
-  try { if (typeof inst.Dispose === 'function') inst.Dispose(); } catch {}
-  // remove from object list
-  try {
-    const arr = o.__components || [];
-    const idx = arr.indexOf(inst);
-    if (idx >= 0) arr.splice(idx, 1);
-  } catch {}
-  // remove from global list
-  try {
-    const all = getGame().componentInstances || [];
-    const idx = all.indexOf(inst);
-    if (idx >= 0) all.splice(idx, 1);
-  } catch {}
+  try { if (typeof inst.Dispose === "function") inst.Dispose(); } catch {}
   log(`rmcomp: removed ${typeName}`);
 }
 

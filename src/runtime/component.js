@@ -110,33 +110,35 @@ export class Component {
   }
 
   findComponent(typeOrName) {
-    const list = this.game?.componentInstances || [];
     const wantName = typeof typeOrName === "string" ? String(typeOrName) : null;
+    const index = this.game?._componentIndex;
+    if (wantName && index) {
+      const arr = index.get(normalizeName(wantName));
+      if (arr) for (const c of arr) { if (c && c.game) return c; }
+      return null;
+    }
+    // Constructor lookup: must iterate (no index key)
+    const list = this.game?.componentInstances || [];
     for (const c of list) {
       if (!c) continue;
-      if (wantName) {
-        const a = (c.propName || c.__typeName || c.constructor?.name || "").toString();
-        if (normalizeName(a) === normalizeName(wantName)) return c;
-      } else if (typeof typeOrName === "function" && c instanceof typeOrName) {
-        return c;
-      }
+      if (typeof typeOrName === "function" && c instanceof typeOrName) return c;
     }
     return null;
   }
 
   findComponents(typeOrName) {
-    const out = [];
-    const list = this.game?.componentInstances || [];
     const wantName = typeof typeOrName === "string" ? String(typeOrName) : null;
+    const index = this.game?._componentIndex;
+    if (wantName && index) {
+      const arr = index.get(normalizeName(wantName));
+      return arr ? arr.filter((c) => c && c.game) : [];
+    }
+    const list = this.game?.componentInstances || [];
+    if (!typeOrName) return list.filter((c) => c && c.game);
+    const out = [];
     for (const c of list) {
       if (!c) continue;
-      if (!typeOrName) { out.push(c); continue; }
-      if (wantName) {
-        const a = (c.propName || c.__typeName || c.constructor?.name || "").toString();
-        if (normalizeName(a) === normalizeName(wantName)) out.push(c);
-      } else if (typeof typeOrName === "function" && c instanceof typeOrName) {
-        out.push(c);
-      }
+      if (typeof typeOrName === "function" && c instanceof typeOrName) out.push(c);
     }
     return out;
   }
@@ -144,6 +146,12 @@ export class Component {
 
 function normalizeName(s) {
   return String(s || "").replace(/[\s\-_]/g, "").toLowerCase();
+}
+
+/** @returns {string} Normalized type name for indexing/lookup */
+export function getComponentTypeName(c) {
+  if (!c) return "";
+  return normalizeName(c.propName || c.__typeName || c.constructor?.name || "");
 }
 
 export const ComponentRegistry = (() => {

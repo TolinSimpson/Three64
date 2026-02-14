@@ -11,7 +11,7 @@ import { UISystem } from "./uiSystem.js";
 import { Statistic } from "./statistic.js";
 import { StatisticBar } from "./statisticBar.js";
 import { ensurePoolSingleton } from "./pool.js";
-import { ArchetypeRegistry } from "./component.js";
+import { ArchetypeRegistry, getComponentTypeName } from "./component.js";
 import "./navmesh.js";
 import "./raycaster.js";
 import "./volume.js";
@@ -245,6 +245,13 @@ export async function createApp() {
       if (typeof c.FixedUpdate === 'function') this.updateLists.fixed.push(c);
       if (typeof c.Update === 'function') this.updateLists.update.push(c);
       if (typeof c.LateUpdate === 'function') this.updateLists.late.push(c);
+      // Maintain component index for O(1) findComponent by type
+      const key = getComponentTypeName(c);
+      if (key) {
+        let arr = this._componentIndex.get(key);
+        if (!arr) { arr = []; this._componentIndex.set(key, arr); }
+        arr.push(c);
+      }
     },
     removeComponent(c) {
       if (!c) return;
@@ -258,6 +265,13 @@ export async function createApp() {
       removeFrom(this.updateLists.fixed);
       removeFrom(this.updateLists.update);
       removeFrom(this.updateLists.late);
+      // Remove from component index
+      const key = getComponentTypeName(c);
+      const arr = key ? this._componentIndex.get(key) : null;
+      if (arr) {
+        const i = arr.indexOf(c);
+        if (i >= 0) arr.splice(i, 1);
+      }
     },
     onUpdate(fn) { if (typeof fn === "function") updaters.push(fn); },
     setWireframe(enabled) {
@@ -291,8 +305,16 @@ export async function createApp() {
   app.ui = new UISystem(app);
   try { app.ui.init(); } catch (e) { console.warn("UISystem init failed:", e); }
 
-  // Global statistics registry (populated by scope:"global" Statistics)
+  // Global statistics registry (populated by scope:"global" Statistics and scene-level object:null stats)
   app.statistics = new Map();
+
+  // O(1) registries for hot-path lookups (populated by components in Initialize/Dispose)
+  app.gameMode = null;
+  app.spawnPoints = [];
+  app.timers = new Map();
+
+  // Component index: typeName -> [components] for fast findComponent/findComponents
+  app._componentIndex = new Map();
 
   // Pooling
   app.pool = new PoolManager(app);

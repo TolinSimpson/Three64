@@ -107,7 +107,7 @@ export class Rigidbody extends Component {
 				this._volumeComp = new Volume({ game: this.game, object: this.object, options: volOpts, propName: "Volume" });
 				this.object.__components = this.object.__components || [];
 				this.object.__components.push(this._volumeComp);
-				this.game.componentInstances.push(this._volumeComp);
+				this.game.addComponent(this._volumeComp);
 				this._volumeComp.Initialize?.();
 			} catch {}
 		}

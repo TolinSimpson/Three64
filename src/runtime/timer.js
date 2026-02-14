@@ -86,13 +86,16 @@ export class Timer extends Component {
       }
     }
 
+    if (this.game?.timers) this.game.timers.set(name, this);
+
     if (o.autoStart) {
       this.start();
     }
   }
 
   Dispose() {
-    // Clean up internal statistic
+    const name = (this.options?.name || "timer").toString().replace(/\s+/g, "").toLowerCase();
+    if (this.game?.timers?.get(name) === this) this.game.timers.delete(name);
     if (this._stat) {
       try { this._stat.Dispose(); } catch {}
     }

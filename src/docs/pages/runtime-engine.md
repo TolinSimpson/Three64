@@ -16,9 +16,20 @@ Bootstraps the engine, creating core systems and returning the main application 
 - `componentInstances`: Array of all active `Component` instances.
 - `toggles`: Debug toggles (e.g., `debugPhysics`, `budgetOverlay`).
 
+**O(1) Lookup Registries (populated by components in Initialize/Dispose):**
+- `statistics`: `Map<name, Statistic>` — global and scene-level stats (scope `"global"` or `object === null`).
+- `gameMode`: First `GameMode` component in the scene.
+- `spawnPoints`: Array of all `SpawnPoint` components.
+- `timers`: `Map<name, Timer>` — timers by name (last registration wins if duplicate names).
+- `player`: Set by `Player.Initialize`.
+- `navMesh`: Set by `NavMesh.Initialize`.
+
+All components must use `addComponent()` to register; direct `componentInstances.push` bypasses the index and update phase routing.
+
 **App Methods:**
+- `addComponent(component)`: Register a component (update phases, index, lifecycle).
 - `onUpdate(fn)`: Register a custom per-frame update function `(dt, app) => void`.
-- `removeComponent(component)`: Safely removes a component from the update loop.
+- `removeComponent(component)`: Safely removes a component from the update loop and index.
 - `setWireframe(enabled)`: Toggles wireframe mode on all scene meshes.
 - `setDoubleSided(enabled)`: Toggles double-sided rendering on all scene materials.
 
