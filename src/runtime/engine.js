@@ -20,6 +20,7 @@ import "./agent.js";
 import "./locomotion.js";
 import "./rigidbody.js";
 import "./projectile.js";
+import "./decal.js";
 import "./statistic.js";
 import "./statisticBar.js";
 import "./item.js";
